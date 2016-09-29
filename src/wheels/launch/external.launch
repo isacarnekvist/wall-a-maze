@@ -1,0 +1,15 @@
+<launch>
+	<!-- export ROS_MASTER_URI=http://192.168.1.206:11311 -->
+
+	<!-- Odomotry -->
+	<node name="odomotry" pkg="odometry" type="odometry" />
+
+	<!-- Keyop -->
+	<node name="keyop" pkg="keyop" type="keyop" />
+
+	<!-- Key Controller -->
+	<node name="key_controller" pkg="key_controller" type="key_controller" />
+
+	<!-- Wheel Controller -->
+	<node name="controller" pkg="wheels" type="controller.py" />
+</launch>

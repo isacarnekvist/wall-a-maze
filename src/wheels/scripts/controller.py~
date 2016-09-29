@@ -75,7 +75,7 @@ class Controller():
         else:
 			rospy.loginfo('Left motor: {}, Right motor: {}'.format(self.state_dict[LEFT_KEY][CURRENT_PERCENTAGE_KEY], self.state_dict[RIGHT_KEY][CURRENT_PERCENTAGE_KEY]))
 			self.left_wheel_pub.publish(self.state_dict[LEFT_KEY][CURRENT_PERCENTAGE_KEY])
-			self.right_wheel_pub.publish(self.state_dict[RIGHT_KEY][CURRENT_PERCENTAGE_KEY])
+            self.right_wheel_pub.publish(self.state_dict[RIGHT_KEY][CURRENT_PERCENTAGE_KEY])
 
     def encoder_callback_left_motor(self, data):
         self.update_state(data, LEFT_KEY)

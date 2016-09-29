@@ -1,0 +1,9 @@
+<launch>
+  
+	
+	<!-- Left Motor -->
+	<node name="left_motor" pkg="phidgets" type="motor" args="_serial:=473027 __name:=left_motor _name:=left_motor" />
+
+	<!-- Right Motor -->
+	<node name="right_motor" pkg="phidgets" type="motor" args="_serial:=475396 __name:=right_motor _nameright_motor" />
+</launch>
