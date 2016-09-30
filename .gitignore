@@ -1,3 +1,16 @@
 build
+install
 devel
 .catkin_workspace
+*~
+src/ras.rosinstall
+src/ras_espeak/
+src/ras_lab1/
+src/ras_maze/
+src/ras_msgs/
+src/ras_phidget/
+src/ras_realsense/
+src/ras_rplidar/
+src/ras_uarm/
+src/CMakeLists.txt
+src/.rosinstall*
