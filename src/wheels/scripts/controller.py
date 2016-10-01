@@ -9,7 +9,7 @@ from phidgets.msg import motor_encoder
 
 LEFT_KEY = 'left'
 RIGHT_KEY = 'right'
-RIGHT_WHEEL_BIAS = 1.1
+RIGHT_WHEEL_BIAS = 1.0
 WHEEL_RADIUS = 0.036
 ROBOT_RADIUS = 0.215 / 2
 LINEAR_ALPHA = 32.0
