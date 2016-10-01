@@ -9,7 +9,7 @@ from phidgets.msg import motor_encoder
 
 LEFT_KEY = 'left'
 RIGHT_KEY = 'right'
-RIGHT_WHEEL_BIAS = 1.0
+RIGHT_WHEEL_BIAS = 1.1
 WHEEL_RADIUS = 0.036
 ROBOT_RADIUS = 0.215 / 2
 LINEAR_ALPHA = 32.0
@@ -74,8 +74,12 @@ class Controller():
             self.right_wheel_pub.publish(0.0)
         else:
 			rospy.loginfo('Left motor: {}, Right motor: {}'.format(self.state_dict[LEFT_KEY][CURRENT_PERCENTAGE_KEY], self.state_dict[RIGHT_KEY][CURRENT_PERCENTAGE_KEY]))
-			self.left_wheel_pub.publish(self.state_dict[LEFT_KEY][CURRENT_PERCENTAGE_KEY])
-			self.right_wheel_pub.publish(self.state_dict[RIGHT_KEY][CURRENT_PERCENTAGE_KEY])
+			self.left_wheel_pub.publish(
+			    max(-100, min(100, self.state_dict[LEFT_KEY][CURRENT_PERCENTAGE_KEY]))
+			)
+			self.right_wheel_pub.publish(
+                            max(-100, min(100, self.state_dict[RIGHT_KEY][CURRENT_PERCENTAGE_KEY]))
+			)
 
     def encoder_callback_left_motor(self, data):
         self.update_state(data, LEFT_KEY)

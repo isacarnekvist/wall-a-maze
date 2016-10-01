@@ -9,23 +9,31 @@
 
 double leftTicks = 0;
 double rightTicks = 0;
-double leftTime[2] = {0.0, 0.0};
-double rightTime[2] = {0.0, 0.0};
+double leftTimeSec[2] = {0.0, 0.0};
+double rightTimeSec[2] = {0.0, 0.0};
+double leftTimeNano[2] = {0.0, 0.0};
+double rightTimeNano[2] = {0.0, 0.0};
 
-double ticksPerRevolution = 83.0;
+double ticksPerRevolution = 900.0;
 double r = 0.036;
 double b = 0.215;
 
 void leftEncoder(const phidgets::motor_encoder::ConstPtr& msg) {
-    leftTime[0] = leftTime[1];
-    leftTime[1] = msg->header.stamp.nsec;
+    leftTimeNano[0] = leftTimeNano[1];
+    leftTimeNano[1] = msg->header.stamp.nsec;
+
+    leftTimeSec[0] = leftTimeSec[1];
+    leftTimeSec[1] = msg->header.stamp.sec;
 
     leftTicks = msg->count_change;
 }
 
 void rightEncoder(const phidgets::motor_encoder::ConstPtr& msg) {
-    rightTime[0] = rightTime[1];
-    rightTime[1] = msg->header.stamp.nsec;
+    rightTimeNano[0] = rightTimeNano[1];
+    rightTimeNano[1] = msg->header.stamp.nsec;
+
+    rightTimeSec[0] = rightTimeSec[1];
+    rightTimeSec[1] = msg->header.stamp.sec;
 
     rightTicks = -msg->count_change;
 }
@@ -44,26 +52,24 @@ int main(int argc, char **argv) {
 
     geometry_msgs::Twist msg;
     while (ros::ok()) {
-        if (leftTime[0] == 0 || rightTime[0] == 0) {
+        if (leftTimeNano[0] == 0 || rightTimeNano[0] == 0) {
             ros::spinOnce();
             loop_rate.sleep();
             continue;
         }
 
-        double leftDeltaTime = (leftTime[1] - leftTime[0]) / 1e9;
-        double rightDeltaTime = (rightTime[1] - rightTime[0]) / 1e9;
+        double leftDeltaTime = leftTimeSec[1] - leftTimeSec[0] + ((leftTimeNano[1] - leftTimeNano[0]) / 1e9);
+        double rightDeltaTime = rightTimeSec[1] - rightTimeSec[0] + ((rightTimeNano[1] - rightTimeNano[0]) / 1e9);
 
-        double wr = 0.0;
-        double wl = 0.0;
+        ROS_INFO("Time delta left: %f", leftDeltaTime);
+        ROS_INFO("Time delta right: %f", rightDeltaTime);
 
-        wr = rightTicks*2*PI*r/(ticksPerRevolution*rightDeltaTime);
-        wl = leftTicks*2*PI*r/(ticksPerRevolution*leftDeltaTime);
 
-        double vel = 0.0;
-        double ang_vel = 0.0;
+        double wr = rightTicks * 2.0 * PI / (ticksPerRevolution*rightDeltaTime);
+        double wl = leftTicks * 2.0 * PI / (ticksPerRevolution*leftDeltaTime);
 
-        vel = ((wr+wl)*r)/2;
-        ang_vel = ((wr-wl)*r)/b;
+        double vel = ((wr + wl) * r) / 2.0;
+        double ang_vel = ((wr - wl) * r) / b;
 
         msg.linear.x = vel;
         msg.angular.z = ang_vel;

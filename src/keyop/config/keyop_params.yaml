@@ -1,0 +1,8 @@
+forward: "up"
+right: "right"
+back: "down"
+left: "left"
+linear_accelerate: "q"
+linear_deaccelerate: "a"
+angular_accelerate: "w"
+angular_deaccelerate: "s"

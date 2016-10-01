@@ -1,0 +1,4 @@
+<launch>
+	<rosparam file="$(find wheels)/config/controller_params.yaml" command="load" />
+	<node pkg="wheels" type="controller" name="controller" output="screen" />
+</launch>

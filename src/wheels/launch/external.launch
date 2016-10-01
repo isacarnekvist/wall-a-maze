@@ -4,12 +4,16 @@
 	<!-- Odomotry -->
 	<node name="odomotry" pkg="odometry" type="odometry" />
 
+	<!-- Localization -->
+	<node name="localization" pkg="localization" type="localization.py" />
+
 	<!-- Keyop -->
-	<node name="keyop" pkg="keyop" type="keyop" />
+	<include file="$(find keyop)/launch/keyop.launch"/>
 
 	<!-- Key Controller -->
-	<node name="key_controller" pkg="key_controller" type="key_controller" />
+	<include file="$(find key_controller)/launch/key_controller.launch"/>
 
 	<!-- Wheel Controller -->
-	<node name="controller" pkg="wheels" type="controller.py" />
+	<include file="$(find wheels)/launch/controller.launch"/>
+	<!-- <node name="controller" pkg="wheels" type="controller.py" /> -->
 </launch>

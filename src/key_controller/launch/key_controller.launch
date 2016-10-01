@@ -1,0 +1,5 @@
+<launch>
+	<rosparam file="$(find key_controller)/config/key_controller_params.yaml" command="load" />
+	<node pkg="key_controller" type="key_controller" name="key_controller" />
+		
+</launch>

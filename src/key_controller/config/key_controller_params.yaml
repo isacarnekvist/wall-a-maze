@@ -1,0 +1,8 @@
+linear_velocity: 0.2
+linear_increment: 0.1
+linear_max: 1.0
+linear_min: 0.0
+angular_velocity: 1.0
+angular_increment: 0.25
+angular_max: 5.0
+angular_min: 0.0

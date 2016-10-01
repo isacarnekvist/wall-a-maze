@@ -6,14 +6,26 @@
 #include <map>
 #include <iostream>
 
-std::string forward = "up";
-std::string right = "right";
-std::string back = "down";
-std::string left = "left";
+std::string forward;
+std::string right;
+std::string back;
+std::string left;
 
-std::string accelerate = "q";
-std::string deaccelerate = "a";
+std::string linear_accelerate;
+std::string linear_deaccelerate;
+std::string angular_accelerate;
+std::string angular_deaccelerate;
 
+void initParams(ros::NodeHandle n) {
+    n.param<std::string>("/foward", forward, "up");
+    n.param<std::string>("/right", right, "right");
+    n.param<std::string>("/back", back, "down");
+    n.param<std::string>("/left", left, "left");
+    n.param<std::string>("/linear_accelerate", linear_accelerate, "q");
+    n.param<std::string>("/linear_deaccelerate", linear_deaccelerate, "a");
+    n.param<std::string>("/angular_accelerate", angular_accelerate, "w");
+    n.param<std::string>("/angular_deaccelerate", angular_deaccelerate, "s");
+}
 
 /* main */
 int main( int argc, char *argv[] ){
@@ -23,8 +35,10 @@ int main( int argc, char *argv[] ){
     pressed[right] = false;
     pressed[back] = false;
     pressed[left] = false;
-    pressed[accelerate] = false;
-    pressed[deaccelerate] = false;
+    pressed[linear_accelerate] = false;
+    pressed[linear_deaccelerate] = false;
+    pressed[angular_accelerate] = false;
+    pressed[angular_deaccelerate] = false;
 	        
     SDL_Event event;
     int quit = 0;
@@ -54,6 +68,8 @@ int main( int argc, char *argv[] ){
     ros::init(argc, argv, "keyop");
 	
 	ros::NodeHandle n;
+
+    initParams(n);
 	
     ros::Publisher keyop_pub = n.advertise<keyop::Keyop>("/keyop/Keyop", 1000);
 	
@@ -90,8 +106,10 @@ int main( int argc, char *argv[] ){
             msg.right = pressed[right];
             msg.back = pressed[back];
             msg.left = pressed[left];
-            msg.accelerate = pressed[accelerate];
-            msg.deaccelerate = pressed[deaccelerate];
+            msg.linear_accelerate = pressed[linear_accelerate];
+            msg.linear_deaccelerate = pressed[linear_deaccelerate];
+            msg.angular_accelerate = pressed[angular_accelerate];
+            msg.angular_deaccelerate = pressed[angular_deaccelerate];
             
             keyop_pub.publish(msg);
             
