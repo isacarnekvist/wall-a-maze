@@ -13,7 +13,7 @@ class Localization():
         rospy.init_node('localization')
 
         self.pose = PoseStamped()
-        self.pose.header.frame_id = 'wheel_center'
+        self.pose.header.frame_id = 'map'
         self.theta = 0.0 # Implicit in PoseStamped but easier to handle explicitly
 
         self.position_pub = rospy.Publisher('/position', PoseStamped, queue_size=10)
