@@ -4,9 +4,6 @@
 	<!-- Odomotry -->
 	<node name="odomotry" pkg="odometry" type="odometry" />
 
-	<!-- Localization -->
-	<node name="localization" pkg="localization" type="localization.py" />
-
 	<!-- Keyop -->
 	<include file="$(find keyop)/launch/keyop.launch"/>
 

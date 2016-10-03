@@ -17,6 +17,9 @@
 		<param name="_frequency" value="50" />
 	</node>
 
+	<!-- Localization -->
+	<node name="localization" pkg="localization" type="localization.py" />
+
 	<!-- Laser scanner -->
 	<include file="$(find rplidar_ros)/launch/rplidar.launch"/>
 
