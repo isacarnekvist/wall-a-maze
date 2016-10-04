@@ -1,0 +1,4 @@
+<launch>
+	<rosparam file="$(find general)/config/general_params.yaml" command="load" />
+	<node pkg="odometry" type="odometry" name="odometry" />
+</launch>
