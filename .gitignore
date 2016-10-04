@@ -14,3 +14,4 @@ src/ras_rplidar/
 src/ras_uarm/
 src/CMakeLists.txt
 src/.rosinstall*
+*.swp
