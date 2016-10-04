@@ -6,8 +6,4 @@
 
 	<!-- Key Controller -->
 	<include file="$(find key_controller)/launch/key_controller.launch"/>
-
-	<!-- Wheel Controller -->
-	<include file="$(find wheels)/launch/controller.launch"/>
-	<!-- <node name="controller" pkg="wheels" type="controller.py" /> -->
 </launch>

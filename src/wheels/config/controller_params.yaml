@@ -1,5 +1,5 @@
 robot: {wheel_radius: 0.036, wheel_base: 0.215}
 left_pid_controller: {kp: 0.5, ki: 0.02, kd: 0.01}
 right_pid_controller: {kp: 0.5, ki: 0.02, kd: 0.01}
-control_frequency: 50
+control_frequency: 125
 ticks_per_rev: 900.0
