@@ -20,9 +20,15 @@
 	<!-- Localization -->
 	<node name="localization" pkg="localization" type="localization.py" />
 
+	<!-- Odometry -->
+	<node name="odometry" pkg="odometry" type="odometry" />
+
+	<node name="laser_broadcaster" pkg="localization" type="laser_broadcaster.py" />
+	<node name="robot_broadcaster" pkg="localization" type="robot_broadcaster.py" />
+
 	<!-- Laser scanner -->
 	<include file="$(find rplidar_ros)/launch/rplidar.launch"/>
-
-roslaunch rplidar_ros rplidar.launch
 	
+    roslaunch rplidar_ros rplidar.launch	
+
 </launch>

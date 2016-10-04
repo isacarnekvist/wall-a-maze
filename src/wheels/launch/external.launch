@@ -1,9 +1,6 @@
 <launch>
 	<!-- export ROS_MASTER_URI=http://192.168.1.206:11311 -->
 
-	<!-- Odomotry -->
-	<node name="odomotry" pkg="odometry" type="odometry" />
-
 	<!-- Keyop -->
 	<include file="$(find keyop)/launch/keyop.launch"/>
 
