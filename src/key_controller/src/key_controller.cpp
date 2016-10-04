@@ -26,15 +26,19 @@ bool linear_deaccelerate = false;
 bool angular_accelerate = false;
 bool angular_deaccelerate = false;
 
+double control_frequency;
+
 void initParams(ros::NodeHandle n) {
-    n.param<double>("/linear_velocity", linear_velocity, 0.2);
-    n.param<double>("/linear_increment", linear_increment, 0.1);
-    n.param<double>("/linear_max", linear_max, 1.0);
-    n.param<double>("/linear_min", linear_min, 0.0);
-    n.param<double>("/angular_velocity", angular_velocity, 0.2);
-    n.param<double>("/angular_increment", angular_increment, 0.1);
-    n.param<double>("/angular_max", angular_max, 1.0);
-    n.param<double>("/angular_min", angular_min, 0.0);
+    n.getParam("/linear_velocity", linear_velocity);
+    n.getParam("/linear_increment", linear_increment);
+    n.getParam("/linear_max", linear_max);
+    n.getParam("/linear_min", linear_min);
+    n.getParam("/angular_velocity", angular_velocity);
+    n.getParam("/angular_increment", angular_increment);
+    n.getParam("/angular_max", angular_max);
+    n.getParam("/angular_min", angular_min);
+
+    n.getParam("/general/control_frequency", control_frequency);
 }
 
 
@@ -61,7 +65,7 @@ int main(int argc, char **argv) {
  
     ros::Publisher keyop_pub = n.advertise<geometry_msgs::Twist>("/motor_controller", 1000);
  
-    ros::Rate loop_rate(10);
+    ros::Rate loop_rate(control_frequency);
  
 	geometry_msgs::Twist msg;
     while (ros::ok()) {

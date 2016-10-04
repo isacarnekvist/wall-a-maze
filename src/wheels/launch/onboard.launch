@@ -1,6 +1,6 @@
 <launch>
   	<!-- export ROS_MASTER_URI=http://192.168.1.206:11311 -->
-	
+
 	<!-- Left Motor -->
 	<node name="left_motor" pkg="phidgets" type="motor" args="_serial:=473027 __name:=left_motor _name:=left_motor _frequency:=125" >
 		<param name="_serial" value="473027" />
@@ -21,7 +21,7 @@
 	<node name="localization" pkg="localization" type="localization.py" />
 
 	<!-- Odometry -->
-	<node name="odometry" pkg="odometry" type="odometry" />
+	<include file="$(find odometry)/launch/odometry.launch"/>
 
 	<node name="laser_broadcaster" pkg="localization" type="laser_broadcaster.py" />
 	<node name="robot_broadcaster" pkg="localization" type="robot_broadcaster.py" />
@@ -31,6 +31,5 @@
 	
 	<!-- Wheel Controller -->
 	<include file="$(find wheels)/launch/controller.launch"/>
-	<!-- <node name="controller" pkg="wheels" type="controller.py" /> -->
 
 </launch>

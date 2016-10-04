@@ -83,26 +83,35 @@ void PIDController(int * left_pwm, int * right_pwm) {
     right_previous_error = right_error;
 }
 
+void resetPIDController(int * left_pwm, int * right_pwm) {
+    left_integral = 0;
+    right_integral = 0;
+
+    left_previous_error = 0;
+    right_previous_error = 0;
+
+    *left_pwm = 0;
+    *right_pwm = 0;
+}
+
 void initParams(ros::NodeHandle n) {
     // Robot
-    n.param<double>("/robot/wheel_radius", wheel_radius, 0.0352);
-    n.param<double>("/robot/wheel_base", wheel_base, 0.23);
+    n.getParam("/robot/wheel_radius", wheel_radius);
+    n.getParam("/robot/wheel_base", wheel_base);
 
     // PID-controller
     // Left
-    n.param<double>("/left_pid_controller/kp", left_kp, 4.4);
-    n.param<double>("/left_pid_controller/ki", left_ki, 0.3);
-    n.param<double>("/left_pid_controller/kd", left_kd, 0.5);
+    n.getParam("/left_pid_controller/kp", left_kp);
+    n.getParam("/left_pid_controller/ki", left_ki);
+    n.getParam("/left_pid_controller/kd", left_kd);
     // Right
-    n.param<double>("/right_pid_controller/kp", right_kp, 4);
-    n.param<double>("/right_pid_controller/ki", right_ki, 0.3);
-    n.param<double>("/right_pid_controller/kd", right_kd, 0.5);
-
-    ROS_INFO("left_kp: %f, left_ki: %f, left_kd: %f, right_kp: %f, right_ki: %f, right_kd: %f", left_kp, left_ki, left_kd, right_kp, right_ki, right_kd);
+    n.getParam("/right_pid_controller/kp", right_kp);
+    n.getParam("/right_pid_controller/ki", right_ki);
+    n.getParam("/right_pid_controller/kd", right_kd);
 
     // Other
-    n.param<double>("/control_frequency", control_frequency, 10);
-    n.param<double>("/ticks_per_rev", ticks_per_rev, 360);
+    n.getParam("/general/control_frequency", control_frequency);
+    n.getParam("/general/ticks_per_rev", ticks_per_rev);
 }
 
 int main(int argc, char **argv) {
@@ -129,6 +138,8 @@ int main(int argc, char **argv) {
 
     while (ros::ok()) {
         if (left_desired * left_desired < 0.001 && right_desired * right_desired < 0.001) {
+            resetPIDController(&left_pwm, &right_pwm); // Robot starts acting weird if it has been idle long, this might help?
+
             left_msg.data = 0;
             right_msg.data = 0;
             left_pub.publish(left_msg);

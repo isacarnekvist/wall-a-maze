@@ -17,14 +17,14 @@ std::string angular_accelerate;
 std::string angular_deaccelerate;
 
 void initParams(ros::NodeHandle n) {
-    n.param<std::string>("/foward", forward, "up");
-    n.param<std::string>("/right", right, "right");
-    n.param<std::string>("/back", back, "down");
-    n.param<std::string>("/left", left, "left");
-    n.param<std::string>("/linear_accelerate", linear_accelerate, "q");
-    n.param<std::string>("/linear_deaccelerate", linear_deaccelerate, "a");
-    n.param<std::string>("/angular_accelerate", angular_accelerate, "w");
-    n.param<std::string>("/angular_deaccelerate", angular_deaccelerate, "s");
+    n.getParam("/forward", forward);
+    n.getParam("/right", right);
+    n.getParam("/back", back);
+    n.getParam("/left", left);
+    n.getParam("/linear_accelerate", linear_accelerate);
+    n.getParam("/linear_deaccelerate", linear_deaccelerate);
+    n.getParam("/angular_accelerate", angular_accelerate);
+    n.getParam("/angular_deaccelerate", angular_deaccelerate);
 }
 
 /* main */
@@ -41,7 +41,7 @@ int main( int argc, char *argv[] ){
     pressed[angular_deaccelerate] = false;
 	        
     SDL_Event event;
-    int quit = 0;
+    bool quit = false;
     
     /* Initialise SDL */
     if( SDL_Init( SDL_INIT_VIDEO ) < 0){
@@ -84,7 +84,11 @@ int main( int argc, char *argv[] ){
             bool keydown = false;
             switch( event.type ){
                 /* Keyboard event */
-                /* Pass the event data onto PrintKeyInfo() */
+                /* SDL_QUIT event (window close) */
+                case SDL_QUIT:
+                    ROS_INFO("hej");
+                    quit = true;
+                    break;
                 case SDL_KEYDOWN:
                 	keydown = true;
                 case SDL_KEYUP:
@@ -92,14 +96,12 @@ int main( int argc, char *argv[] ){
                 		pressed[SDL_GetKeyName(event.key.keysym.sym)] = keydown;
                 	}
                     break;
-
-                /* SDL_QUIT event (window close) */
-                case SDL_QUIT:
-                    quit = 1;
-                    break;
-
                 default:
                     break;
+            }
+
+            if (quit) {
+                break;
             }
             
             msg.forward = pressed[forward];
