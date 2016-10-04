@@ -21,7 +21,7 @@ class Localization():
         self.odometry_timestamp = None
         rospy.Subscriber('/odometry', Twist, self.odometry_callback)
 
-        rate = rospy.Rate(100)
+        rate = rospy.Rate(125)
         while not rospy.is_shutdown():
             self.publish_latest()
             rate.sleep()

@@ -48,7 +48,7 @@ int main(int argc, char **argv) {
 
     ros::Publisher odometry_pub = n.advertise<geometry_msgs::Twist>("/odometry", 1000);
 
-    ros::Rate loop_rate(30);
+    ros::Rate loop_rate(125);
 
     geometry_msgs::Twist msg;
     while (ros::ok()) {
