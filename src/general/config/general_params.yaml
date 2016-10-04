@@ -1,0 +1,4 @@
+general: {
+	control_frequency: 125,
+	ticks_per_rev: 900.0
+}
