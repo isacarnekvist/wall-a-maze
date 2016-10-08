@@ -20,7 +20,11 @@ from uarm.msg import Coords
 from uarm.msg import CoordsWithTime
 from uarm.msg import CoordsWithTS4
 
-def get_current_pos():
+
+
+	
+#def get_current_pos():
+	
 	
 
 # Maybe not even necessary for start
@@ -32,39 +36,38 @@ def get_current_pos():
 #        pub.publish(status) # need to look up what values for attach/detach -- 1 attach, 0 detach
 #        rate.sleep()	
 	
-def calc_next_pos(currentPos, desiredPos, nextPos, waypoint):
+#def calc_next_pos(currentPos, desiredPos, nextPos, waypoint):
 	# first move to end effector position above object
-	if waypoint == 1
-		nextPos.x = desiredPos.x
-		nextPos.y = desiredPos.y
-		nextPos.z = currentPos.z
+#	if waypoint == 1
+#		nextPos.x = desiredPos.x
+#		nextPos.y = desiredPos.y
+#		nextPos.z = currentPos.z
 	# then move down on object
-	else if waypoint == 2
-		nextPos.x = desiredPos.x
-		nextPos.y = desiredPos.y
-		nextPos.z = desiredPos.z
+#	else if waypoint == 2
+#		nextPos.x = desiredPos.x
+#		nextPos.y = desiredPos.y
+#		nextPos.z = desiredPos.z
 	
-	
-def move_to():
-    pub = rospy.Publisher('/move_to', String, queue_size=10)
+
+def move_to(position):
+    	pub = rospy.Publisher('/move_to', Coords, queue_size=10)
         
-    # Set desired position
-    x = 
-    y =
-    z =
-        
-    
-    rate = rospy.Rate(10) # 10hz
-    while not rospy.is_shutdown():
-        
-        pub.publish(hello_str)
-        rate.sleep()
+    	rate = rospy.Rate(10) # 10hz
+    	while not rospy.is_shutdown():
+        	pub.publish(position)
+        	rate.sleep()
 
 if __name__ == '__main__':
 
 	rospy.init_node('moveToGoal', anonymous=True)
 	
-    try:
-        move_to()
-    except rospy.ROSInterruptException:
-        pass
+	# Define position
+	testCoord = Coords()
+	testCoord.x = 20
+	testCoord.y = -7
+	testCoord.z = 15
+	
+    	try:
+        	move_to(testCoord)
+    	except rospy.ROSInterruptException:
+        	pass
