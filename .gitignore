@@ -15,3 +15,5 @@ src/ras_uarm/
 src/CMakeLists.txt
 src/.rosinstall*
 *.swp
+.ipynb_checkpoints
+*.pyc

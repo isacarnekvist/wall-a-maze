@@ -14,17 +14,41 @@ class Localization():
 
         self.pose = PoseStamped()
         self.pose.header.frame_id = 'map'
-        self.theta = 0.0 # Implicit in PoseStamped but easier to handle explicitly
 
         self.position_pub = rospy.Publisher('/position', PoseStamped, queue_size=10)
 
         self.odometry_timestamp = None
         rospy.Subscriber('/odometry', Twist, self.odometry_callback)
 
+
+        # Start of changing to kalman filtering
+        # State estimation as measurements:
+        self.x_measured = 0.0
+        self.y_measured = 0.0
+        self.theta_measured = 0.0
+
+        # State:
+        self.last_state_update = datetime.now()
+        self.x = 0.0
+        self.y = 0.0
+        self.theta = 0.0
+        self.Gamma = np.eye(666) # TBD, this is the covariance matrix of the state
+
         rate = rospy.Rate(125)
         while not rospy.is_shutdown():
+            self.kalman_steps()
             self.publish_latest()
             rate.sleep()
+
+    def kalman_steps(self):
+        # Calculate next state given controls and previous (current) state
+        # state += timedelta * control_velocities
+        # Update covariance matrix with noise
+        # Calculate kalman gain
+        # Correction step
+        # state = corrected state
+        # Sigma = corrected Sigma
+        pass
 
     def publish_latest(self):
         self.position_pub.publish(self.pose)
