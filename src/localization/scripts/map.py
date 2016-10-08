@@ -31,15 +31,20 @@ class Map:
     def add_edge(self, x1, y1, x2, y2):
         self.edges.append((x1, y1, x2, y2))
     
-    def scan(self, x, y):
-        """returns distances and derivatives in 360 degrees"""
+    def scan(self, x, y, theta):
+        """returns distances and derivatives in 360 degrees
+        x, y: float
+             position in meters
+        theta: float
+            robot rotation in radians
+        """
         n = len(self.edges)
         distances = np.zeros((n, 360))
         dxs = np.zeros((n, 360))
         dys = np.zeros((n, 360))
         dthetas = np.zeros((n, 360))
         for i, edge in enumerate(self.edges):
-            dist, dx, dy, dtheta = self._intersections(x, y, *edge)
+            dist, dx, dy, dtheta = self._intersections(x, y, theta, *edge)
             dxs[i, :] = dx
             dys[i, :] = dy
             dthetas[i, :] = dtheta
@@ -53,7 +58,7 @@ class Map:
             dthetas[min_inds, range(360)]
         )
 
-    def _intersections(self, x1, x2, a1, a2, b1, b2):
+    def _intersections(self, x1, x2, theta, a1, a2, b1, b2):
         """
         Returns distances and derivatives given one position and one edge
         """
@@ -65,12 +70,12 @@ class Map:
         b = np.array([[b1, b2]]).T
         x = np.array([[x1, x2]]).T
         for angle in range(360):
-            theta = pi * angle / 180
+            alpha = pi * angle / 180
             try:
-                k = 1.0 / ((a2 - b2) * cos(theta) + sin(theta) * (b1 - a1))
+                k = 1.0 / ((a2 - b2) * cos(theta + alpha) + sin(theta + alpha) * (b1 - a1))
                 A = np.array([
                     [ a2 - b2   , b1 - a1   ],
-                    [-sin(theta), cos(theta)]
+                    [-sin(theta + alpha), cos(theta + alpha)]
                 ])
                 s, t = (k * np.dot(A, (a - x))).flatten()
                 if 0 <= t <= 1 and 0 < s:
@@ -78,9 +83,9 @@ class Map:
                     dx1[angle] = k * (b2 - a2)
                     dx2[angle] = k * (a1 - b1)
                     f = (a1 - x1) * (a2 - b2) + (a2 - x2) * (b1 - a1)
-                    fprim = np.array([cos(theta), sin(theta)]).dot(x - a)
+                    fprim = np.array([cos(theta + alpha), sin(theta + alpha)]).dot(x - a)
                     g = 1 / k
-                    gprim = np.array([cos(theta), sin(theta)]).dot(b - a)
+                    gprim = np.array([cos(theta + alpha), sin(theta + alpha)]).dot(b - a)
                     dtheta[angle] = k ** 2 * (-gprim * f)
             except ZeroDivisionError:
                 pass
