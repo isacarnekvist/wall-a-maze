@@ -8,7 +8,9 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
   std_msgs
-  OpenCV
+  image_transport
+  cv_bridge
+  sensor_msgs
 )
 
 ## System dependencies are found with CMake's conventions
@@ -101,11 +103,11 @@ find_package(catkin REQUIRED COMPONENTS
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-	DEPENDS opencv
-#  INCLUDE_DIRS include
-#  LIBRARIES perception
-#  CATKIN_DEPENDS roscpp rospy std_msgs
-#  DEPENDS system_lib
+  DEPENDS opencv
+  INCLUDE_DIRS include
+  LIBRARIES perception
+  CATKIN_DEPENDS roscpp rospy std_msgs
+  DEPENDS system_lib
 )
 
 ###########
@@ -117,6 +119,7 @@ catkin_package(
 # include_directories(include)
 include_directories(
   ${catkin_INCLUDE_DIRS}
+  ${OpenCV_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
@@ -130,16 +133,17 @@ include_directories(
 # add_dependencies(perception ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
-# add_executable(perception_node src/perception_node.cpp)
+add_executable(perception src/perception.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
-# add_dependencies(perception_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(perception ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
-# target_link_libraries(perception_node
-#   ${catkin_LIBRARIES}
-# )
+target_link_libraries(perception
+  ${catkin_LIBRARIES}
+  ${OpenCV_LIBRARIES}
+)
 
 #############
 ## Install ##
@@ -188,9 +192,3 @@ include_directories(
 
 ## Add folders to be run by python nosetests
 # catkin_add_nosetests(test)
-
-include_directories(${OpenCV_INCLUDE_DIRS})
-include_directories(include ${catkin_INCLUDE_DIRS})
-
-add_executable(perception src/perception.cpp)
-target_link_libraries(perception ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})
