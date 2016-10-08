@@ -3,8 +3,13 @@
 from math import cos, sin
 from datetime import datetime
 
+import numpy as np
+
 import rospy
 from geometry_msgs.msg import PoseStamped, Twist
+
+from map import Map
+
 
 class Localization():
 
@@ -17,40 +22,80 @@ class Localization():
         self.position_pub = rospy.Publisher('/position', PoseStamped, queue_size=10)
 
         self.odometry_timestamp = None
+        self.kalman_timestamp = None
         rospy.Subscriber('/odometry', Twist, self.odometry_callback)
-
+        rospy.Subscriber('/motor_controller', Twist, self.control_callback)
 
         # Start of changing to kalman filtering
-        # State estimation as measurements:
-        self.x_measured = 0.0
-        self.y_measured = 0.0
-        self.theta_measured = 0.0
+        # Store control signals to estimate mu 
+        self.linear_control = 0.0
+        self.angular_control = 0.0
+
+        # Store accumulated change in state due to controls
+        self.x_delta = 0.0
+        self.y_delta = 0.0
+        self.theta_delta = 0.0
+
+        # Store estimated pose from wheel odometry
 
         # State:
         self.last_state_update = datetime.now()
         self.x = 0.0
         self.y = 0.0
         self.theta = 0.0
-        self.Gamma = np.eye(666) # TBD, this is the covariance matrix of the state
+        self.Gamma = np.eye(3) # Have velocities in state?
 
         rate = rospy.Rate(125)
         while not rospy.is_shutdown():
-            self.kalman_steps()
+            self.kalman_update()
             self.publish_latest()
             rate.sleep()
 
-    def kalman_steps(self):
+    def kalman_update(self):
+        if self.kalman_timestamp is None:
+            self.kalman_timestamp = datetime.now()
+            return
         # Calculate next state given controls and previous (current) state
-        # state += timedelta * control_velocities
+        timedelta = datetime.now() - self.kalman_timestamp
+        delta = timedelta.seconds + timedelta.microseconds / 1e6
+
+        theta_bar = self.theta + delta * self.angular_control
+        mu_bar = np.array([
+            [self.x + delta * cos((self.theta + theta_bar) / 2) * self.linear_control],
+            [self.y + delta * sin((self.theta + theta_bar) / 2) * self.linear_control],
+            [theta_bar]
+        ])
+
         # Update covariance matrix with noise
+        self.Gamma += np.diag([0.01, 0.01, 0.01]) # TODO update and tweak with how much we actually trust this update, maybe as function of theta?
+
         # Calculate kalman gain
+        # 1: Get estimated laser readings given state
+        distances, dx, dy, dtheta = map.scan(mu_bar[0], mu_bar[1])
+        # 2: Get laser readings rotated in the same way
+        # 3: Compared signals and pick suitable subset
+        # 4: Build the jacobian and
+        # 5: Calculate kalman gain
+
         # Correction step
         # state = corrected state
         # Sigma = corrected Sigma
-        pass
+
+        self.x, self.y, self.theta = mu_bar.flatten()
+        rospy.loginfo('x: {} y: {} theta: {}'.format(self.x, self.y, self.theta))
+
+        self.kalman_timestamp = datetime.now()
 
     def publish_latest(self):
+        self.pose.pose.position.x = self.x
+        self.pose.pose.position.y = self.y
+        self.pose.pose.orientation.x = cos(self.theta / 2)
+        self.pose.pose.orientation.y = sin(self.theta / 2)
         self.position_pub.publish(self.pose)
+
+    def control_callback(self, data):
+        self.linear_control = data.linear.x
+        self.angular_control = data.angular.z
 
     def odometry_callback(self, data):
         if self.odometry_timestamp is None:
@@ -60,14 +105,9 @@ class Localization():
         timedelta = datetime.now() - self.odometry_timestamp
         delta_seconds = timedelta.seconds + timedelta.microseconds / 1e6
 
-        # Update position
-        self.theta += delta_seconds * data.angular.z
-        self.pose.pose.position.x += delta_seconds * data.linear.x * cos(self.theta)
-        self.pose.pose.position.y += delta_seconds * data.linear.x * sin(self.theta)
-        self.pose.pose.orientation.x = cos(self.theta / 2)
-        self.pose.pose.orientation.y = sin(self.theta / 2)
-        self.odometry_timestamp = datetime.now()
+        # Implement?
 
+        self.odometry_timestamp = datetime.now()
 
 if __name__ == '__main__':
     Localization()
