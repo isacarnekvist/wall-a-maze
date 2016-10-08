@@ -4,7 +4,6 @@ from math import cos, sin
 from datetime import datetime
 
 import rospy
-from phidgets.msg import motor_encoder
 from geometry_msgs.msg import PoseStamped, Twist
 
 class Localization():
