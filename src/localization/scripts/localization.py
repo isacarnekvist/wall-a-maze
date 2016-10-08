@@ -25,18 +25,13 @@ class Localization():
         self.kalman_timestamp = None
         rospy.Subscriber('/odometry', Twist, self.odometry_callback)
         rospy.Subscriber('/motor_controller', Twist, self.control_callback)
+        # add subscriber to laser scans in robot frame:
+        # TODO
 
         # Start of changing to kalman filtering
         # Store control signals to estimate mu 
         self.linear_control = 0.0
         self.angular_control = 0.0
-
-        # Store accumulated change in state due to controls
-        self.x_delta = 0.0
-        self.y_delta = 0.0
-        self.theta_delta = 0.0
-
-        # Store estimated pose from wheel odometry
 
         # State:
         self.last_state_update = datetime.now()
@@ -71,7 +66,7 @@ class Localization():
 
         # Calculate kalman gain
         # 1: Get estimated laser readings given state
-        distances, dx, dy, dtheta = map.scan(mu_bar[0], mu_bar[1])
+        distances, dx, dy, dtheta = map.scan(*mu_bar.flatten())
         # 2: Get laser readings rotated in the same way
         # 3: Compared signals and pick suitable subset
         # 4: Build the jacobian and
