@@ -104,10 +104,10 @@ find_package(catkin REQUIRED COMPONENTS
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   DEPENDS opencv
-  INCLUDE_DIRS include
-  LIBRARIES perception
-  CATKIN_DEPENDS roscpp rospy std_msgs
-  DEPENDS system_lib
+#  INCLUDE_DIRS include
+#  LIBRARIES perception
+#  CATKIN_DEPENDS roscpp rospy std_msgs
+#  DEPENDS system_lib
 )
 
 ###########

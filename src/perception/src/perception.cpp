@@ -1,24 +1,26 @@
 #include <ros/ros.h>
-#include " sensor_msgs/Image.h"
+#include "sensor_msgs/Image.h"
 #include "sensor_msgs/PointCloud2.h"
 #include <image_transport/image_transport.h>
 #include <opencv2/highgui/highgui.hpp>
 #include <cv_bridge/cv_bridge.h>
 
 #include "opencv2/imgproc/imgproc.hpp"
+#include <iostream>
+#include <stdio.h>
+#include <stdlib.h>
 
-int iLowH = 0;
-int iHighH = 179;
+int iLowH = 1;      // 0
+int iHighH = 10;    // 179
 
-int iLowS = 0;
-int iHighS = 255;
+int iLowS = 138;    // 0
+int iHighS = 255;   // 255
 
-int iLowV = 0;
-int iHighV = 255;
+int iLowV = 130;      // 0
+int iHighV = 255;   // 255
 
-bool image = true;
-
-cv::Mat imgOriginal;
+int iLastX = -1;
+int iLastY = -1;
 
 void pointCloudCallback(const sensor_msgs::PointCloud2ConstPtr& msg) {
 
@@ -26,37 +28,82 @@ void pointCloudCallback(const sensor_msgs::PointCloud2ConstPtr& msg) {
 
 void imageCallback(const sensor_msgs::ImageConstPtr& msg)
 {
-    if (!image) {
-        return;
-    }
-    image = false;
-    imgOriginal = cv_bridge::toCvShare(msg, "bgr8")->image;
+    cv::Mat imgOriginal = cv_bridge::toCvShare(msg, "bgr8")->image;
 
-    /*
     cv::Mat imgHSV;
 
-    cv::cvtColor(imgOriginal, imgHSV, cv::COLOR_BGR2HSV);
+    cv::cvtColor(imgOriginal, imgHSV, cv::COLOR_BGR2HSV); //Convert the captured frame from BGR to HSV
 
     cv::Mat imgThresholded;
 
-    cv::inRange (imgHSV, cv::Scalar())
+    cv::inRange(imgHSV, cv::Scalar(iLowH, iLowS, iLowV), cv::Scalar(iHighH, iHighS, iHighV), imgThresholded); //Threshold the image
 
-  try
-  {
-    cv::imshow("view", cv_bridge::toCvShare(msg, "bgr8")->image );
-    cv::waitKey(30);
-  }
-  catch (cv_bridge::Exception& e)
-  {
-    ROS_ERROR("Could not convert from '%s' to 'bgr8'.", msg->encoding.c_str());
-  }
-  */
+/*
+    std::vector<std::vector<cv::Point> > contours;
+    std::vector<cv::Vec4i> hierarchy;
+
+    cv::findContours(imgThresholded, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, cv::Point(0, 0));
+
+    std::vector<cv::Moments> mu(contours.size());
+    for (int i = 0; i < contours.size(); i++) {
+        mu[i] = cv::moments(contours[i], false);
+    }
+*/
+    cv::Moments moments = cv::moments(imgThresholded, false);
+
+    /*
+    double m01 = mu[0].m01;
+    double m10 = mu[0].m10;
+    double area = mu[0].m00;
+    */
+    double m01 = moments.m01;
+    double m10 = moments.m10;
+    double area = moments.m00;
+
+    double x = m10 / area;
+    double y = m01 / area;
+
+    //std::cout << "X: " << x << "\tY: " << y << std::endl;
+
+    double height = msg->height / 3;
+    double width = msg->width / 3;
+
+    if (y < height) {
+        // Top
+        std::cout << "Top ";
+    } else if (y < height * 2) {
+        // Middle
+        std::cout << "Middle ";
+    } else {
+        // Bottom
+        std::cout << "Bottom ";
+    }
+    if (x < width) {
+        // Left
+        std::cout << "Left" << std::endl;
+    } else if (x < width * 2) {
+        // Middle
+        std::cout << "Center" << std::endl;
+    } else {
+        // Right
+        std::cout << "Right" << std::endl;
+    }
+
+    //std::cout << "X1: " << mu[0].m10 / mu[0].m00 << ", Y1: " << mu[0].m01 / mu[0].m00 << "\t\tX2: " << mu[1].m10 / mu[1].m00 << ", Y2: " << mu[1].m01 / mu[1].m00 << std::endl;
+    cv::imshow("Thresholded Image", imgThresholded); //show the thresholded image
+    cv::imshow("Original", imgOriginal); //show the original image
+
+    if (cv::waitKey(30) == 27) //wait for 'esc' key press for 30ms. If 'esc' key is pressed, break loop
+    {
+        std::cout << "esc key is pressed by user" << std::endl;
+    }
 }
 
 int main(int argc, char **argv)
 {
   ros::init(argc, argv, "image_listener");
   ros::NodeHandle nh;
+
 
   cv::namedWindow("Control", CV_WINDOW_AUTOSIZE); //create a window called "Control"
 
@@ -76,35 +123,7 @@ int main(int argc, char **argv)
   image_transport::ImageTransport it(nh);
   image_transport::Subscriber sub = it.subscribe("camera/rgb/image_raw", 1, imageCallback);
 
-  while (ros::ok ()) {
-      if (!image) {
-      cv::Mat imgHSV;
-
-      cv::cvtColor(imgOriginal, imgHSV, cv::COLOR_BGR2HSV); //Convert the captured frame from BGR to HSV
-
-      cv::Mat imgThresholded;
-
-      cv::inRange(imgHSV, cv::Scalar(iLowH, iLowS, iLowV), cv::Scalar(iHighH, iHighS, iHighV), imgThresholded); //Threshold the image
-
-      //morphological opening (remove small objects from the foreground)
-      cv::erode(imgThresholded, imgThresholded, cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5)) );
-      cv::dilate( imgThresholded, imgThresholded, cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5)) );
-
-      //morphological closing (fill small holes in the foreground)
-      cv::dilate( imgThresholded, imgThresholded, cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5)) );
-      cv::erode(imgThresholded, imgThresholded, cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5)) );
-
-      cv::imshow("Thresholded Image", imgThresholded); //show the thresholded image
-      cv::imshow("Original", imgOriginal); //show the original image
-
-      if (cv::waitKey(30) == 27) //wait for 'esc' key press for 30ms. If 'esc' key is pressed, break loop
-             {
-                  std::cout << "esc key is pressed by user" << std::endl;
-
-             }
-      }
-      ros::spinOnce ();
-  }
+  ros::spin();
 
 
 }
