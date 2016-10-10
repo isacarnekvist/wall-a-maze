@@ -1,27 +1,30 @@
 #!/usr/bin/env python
+from math import pi
+
 import roslib
 roslib.load_manifest('manipulation')
 import rospy
 
 import tf
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import Point
 
-def robot_to_map(pose):
+def robot_to_uarm(uarm_cc):
     br = tf.TransformBroadcaster()
     br.sendTransform(
-       (pose.pose.position.x, pose.pose.position.y, 0),
-       (pose.pose.orientation.x, pose.pose.orientation.y, pose.pose.orientation.z, pose.pose.orientation.w),
-       rospy.Time.now(),
-       "wheel_center",
-       "map"
+        # Y is how much the laser is translated to the right
+        # X is how much the laser is translated forwards
+        (-0.105,0.086,0.051),
+        tf.transformations.quaternion_from_euler(0, 0, 4.5 * pi / 180.0),
+        rospy.Time.now(),
+        "uarm",
+        "wheel_center"
     )
-    rospy.loginfo(pose)
 
 if __name__ == '__main__':
-    rospy.init_node('robot_broadcaster')
+    rospy.init_node('arm_broadcaster')
     rospy.Subscriber(
-        '/position',
-        PoseStamped,
-        robot_to_map
+        '/uarm_cc',
+        Point,
+        robot_to_uarm
     )
     rospy.spin()
