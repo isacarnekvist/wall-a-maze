@@ -3,6 +3,7 @@
 from math import cos, sin
 from datetime import datetime
 
+import tf
 import rospy
 from phidgets.msg import motor_encoder
 from geometry_msgs.msg import PoseStamped, Twist
@@ -41,8 +42,11 @@ class Localization():
         self.theta += delta_seconds * data.angular.z
         self.pose.pose.position.x += delta_seconds * data.linear.x * cos(self.theta)
         self.pose.pose.position.y += delta_seconds * data.linear.x * sin(self.theta)
-        self.pose.pose.orientation.x = cos(self.theta / 2)
-        self.pose.pose.orientation.y = sin(self.theta / 2)
+	orientation = tf.transformations.quaternion_from_euler(0, 0, self.theta)
+	self.pose.pose.orientation.x = orientation[0]
+	self.pose.pose.orientation.y = orientation[1]
+	self.pose.pose.orientation.z = orientation[2]
+	self.pose.pose.orientation.w = orientation[3]
         self.odometry_timestamp = datetime.now()
 
 

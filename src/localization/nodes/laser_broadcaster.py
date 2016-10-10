@@ -14,7 +14,7 @@ def robot_to_laser(scan):
         # Y is how much the laser is translated to the right
         # X is how much the laser is translated forwards
         (0.08, -0.009, 0.0),
-        tf.transformations.quaternion_from_euler(pi, 0, 91.5 * pi / 180.0),
+        tf.transformations.quaternion_from_euler(0, 0, -91.5 * pi / 180.0),
         rospy.Time.now(),
         "laser",
         "wheel_center"
