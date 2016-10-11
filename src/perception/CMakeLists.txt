@@ -11,6 +11,8 @@ find_package(catkin REQUIRED COMPONENTS
   image_transport
   cv_bridge
   sensor_msgs
+  pcl_conversions
+  pcl_ros
 )
 
 ## System dependencies are found with CMake's conventions
@@ -120,6 +122,7 @@ catkin_package(
 include_directories(
   ${catkin_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
+  #${PCL_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
@@ -143,6 +146,7 @@ add_dependencies(perception ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTE
 target_link_libraries(perception
   ${catkin_LIBRARIES}
   ${OpenCV_LIBRARIES}
+  #${PCL_LIBRARIES}
 )
 
 #############
