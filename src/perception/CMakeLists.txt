@@ -11,6 +11,8 @@ find_package(catkin REQUIRED COMPONENTS
   image_transport
   cv_bridge
   sensor_msgs
+  pcl_conversions
+  pcl_ros
 )
 
 ## System dependencies are found with CMake's conventions
@@ -104,10 +106,10 @@ find_package(catkin REQUIRED COMPONENTS
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   DEPENDS opencv
-  INCLUDE_DIRS include
-  LIBRARIES perception
-  CATKIN_DEPENDS roscpp rospy std_msgs
-  DEPENDS system_lib
+#  INCLUDE_DIRS include
+#  LIBRARIES perception
+#  CATKIN_DEPENDS roscpp rospy std_msgs
+#  DEPENDS system_lib
 )
 
 ###########
@@ -120,6 +122,7 @@ catkin_package(
 include_directories(
   ${catkin_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
+  #${PCL_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
@@ -143,6 +146,7 @@ add_dependencies(perception ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTE
 target_link_libraries(perception
   ${catkin_LIBRARIES}
   ${OpenCV_LIBRARIES}
+  #${PCL_LIBRARIES}
 )
 
 #############
