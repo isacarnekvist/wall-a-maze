@@ -1,5 +1,6 @@
 #include <ros/ros.h>
 #include "sensor_msgs/Image.h"
+#include "geometry_msgs/Point.h"
 #include "sensor_msgs/PointCloud2.h"
 #include <image_transport/image_transport.h>
 #include <opencv2/highgui/highgui.hpp>
@@ -48,6 +49,7 @@ int iLowV = 77;      // 0
 int iHighV = 255;   // 255
 
 ros::Publisher pub;
+ros::Publisher object_pub;
 
 void pointCloudCallback(const sensor_msgs::PointCloud2ConstPtr& msg) {
     //std::cout << "Height: " << msg->height << "\tWidth: " << msg->width << std::endl;
@@ -60,21 +62,31 @@ void pointCloudCallback(const sensor_msgs::PointCloud2ConstPtr& msg) {
     pcl_conversions::toPCL(*msg, *cloud);
     */
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_tmp(new pcl::PointCloud<pcl::PointXYZRGB>);
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_tmp2(new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_filtered(new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_final(new pcl::PointCloud<pcl::PointXYZRGB>);
 
-    pcl::fromROSMsg(*msg, *cloud_tmp);
-
+    pcl::fromROSMsg(*msg, *cloud_tmp2);
+    /*
+    pcl::VoxelGrid<pcl::PointXYZRGB> sor;
+    sor.setInputCloud(cloud_tmp);
+    sor.setLeafSize(0.002, 0.002, 0.002);
+    sor.filter(*cloud_tmp2);
+    */
     //Eigen::Affine3f transform = Eigen::Affine3f::Identity();
 
     //(0.115, 0.0, 0.202),
     //        tf.transformations.quaternion_from_euler(0.0, 30.0 * pi / 180.0, 0.0),
 
-    const Eigen::Vector3f translation(0.0, -0.202, 0.115);
+    //const Eigen::Vector3f translation(0.0, -0.202, 0.115);
+
+
+    const Eigen::Vector3f translation(0.0, -0.152, 0.115);
 
     double yaw = 0.0;
-    double roll = -30.0 * PI / 180.0;
+    //double roll = -30.0 * PI / 180.0;
+    double roll = -42.0 * PI / 180.0;
     double pitch = 0.0;
 
     double t0 = std::cos(yaw * 0.5f);
@@ -93,25 +105,25 @@ void pointCloudCallback(const sensor_msgs::PointCloud2ConstPtr& msg) {
 
     Eigen::Quaternionf rotation(w, x, y, z);
 
-    pcl::transformPointCloud(*cloud_tmp, *cloud, translation, rotation);
+    pcl::transformPointCloud(*cloud_tmp2, *cloud, translation, rotation);
 
     // GREEN
+    /*
     int rMax = 120;
     int rMin = 0;
     int gMax = 255;
     int gMin = 100;
     int bMax = 70;
     int bMin = 0;
-
-    // RED
-    /*
-    int rMax = 255;
-    int rMin = 110;
-    int gMax = 80;
-    int gMin = 0;
-    int bMax = 35;
-    int bMin = 0;
     */
+    // RED
+    int rMax = 255;
+    int rMin = 80;
+    int gMax = 40;
+    int gMin = 0;
+    int bMax = 40;
+    int bMin = 0;
+
     // PURPLE
     /*
     int rMax = 160;
@@ -148,7 +160,7 @@ void pointCloudCallback(const sensor_msgs::PointCloud2ConstPtr& msg) {
 
     pcl::getMinMax3D(*cloud_filtered, min_p, max_p);
 
-    std::cout << "Min: x=" << min_p.x << " y=" << min_p.y << " z=" << min_p.z << std::endl << "Max: x" << max_p.x << " y=" << max_p.y << " z=" << max_p.z << std::endl;
+    //std::cout << "Min: x=" << min_p.x << " y=" << min_p.y << " z=" << min_p.z << std::endl << "Max: x" << max_p.x << " y=" << max_p.y << " z=" << max_p.z << std::endl;
 
 
     pcl::PassThrough<pcl::PointXYZRGB> pass;
@@ -175,14 +187,15 @@ void pointCloudCallback(const sensor_msgs::PointCloud2ConstPtr& msg) {
 
     sensor_msgs::PointCloud2 output;
 
-    pcl::toROSMsg(*cloud_final, output);
+    pcl::toROSMsg(*cloud_filtered, output);
 
     // PCL -> RIKTIG
     // z = x
     // x = y
 
-    double forward;
-    double side;
+    double forward = 0.0;
+    double side = 0.0;
+    double height = 0.0;
 
     double numPoints = 0.0;
     for (pcl::PointCloud<pcl::PointXYZRGB>::iterator point = cloud_final->points.begin(); point < cloud_final->points.end(); point++) {
@@ -190,11 +203,19 @@ void pointCloudCallback(const sensor_msgs::PointCloud2ConstPtr& msg) {
 
         forward += point->z;
         side += point->x;
+        height -= point->y; // Inverted
     }
 
-    std::cout << "Forward: " << forward / numPoints << "\tSide: " << side / numPoints << std::endl;
+    std::cout << "Forward: " << forward / numPoints << "\tSide: " << side / numPoints << "\tHeight: " << height / numPoints << std::endl;
 
     pub.publish(output);
+
+    geometry_msgs::Point point;
+    point.x = forward / numPoints;
+    point.y = side / numPoints;
+    point.z = height / numPoints;
+
+    object_pub.publish(point);
 
 }
 
@@ -318,6 +339,8 @@ int main(int argc, char **argv) {
   ros::Subscriber point_sub = nh.subscribe("camera/depth_registered/points", 1, pointCloudCallback);
 
   pub = nh.advertise<sensor_msgs::PointCloud2> ("output", 1);
+
+  object_pub = nh.advertise<geometry_msgs::Point> ("objectPos_wheelcenter", 1);
 
   ros::spin();
 
