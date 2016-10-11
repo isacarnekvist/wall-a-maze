@@ -10,13 +10,14 @@ from uarm.msg import Coords
 
 
 if __name__ == "__main__":
-	pub = rospy.Publisher('/uarm_cc', Point, queue_size=10)
 	rospy.init_node('uarm_pos_fromService')
+
+	pub = rospy.Publisher('/uarm_cc', Point, queue_size=10)
 
 	# Wait for get_position service
 	rospy.wait_for_service('/uarm/get_positions')
 
-	rate = rospy.Rate(10) # 10hz
+	rate = rospy.Rate(1) # 10hz
 	while not rospy.is_shutdown():
 		try:
 			get_curPos = rospy.ServiceProxy('/uarm/get_positions', GetPositions)
