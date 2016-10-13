@@ -24,6 +24,8 @@
 
 #include <tf/transform_datatypes.h>
 
+#include <pcl_ros/point_cloud.h>
+
 #define PI           3.14159265358979323846  /* pi */
 
 /*
@@ -51,7 +53,7 @@ int iHighV = 255;   // 255
 ros::Publisher pub;
 ros::Publisher object_pub;
 
-void pointCloudCallback(const sensor_msgs::PointCloud2ConstPtr& msg) {
+void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& cloud_tmp2) {
     //std::cout << "Height: " << msg->height << "\tWidth: " << msg->width << std::endl;
     /*
     pcl::PCLPointCloud2* cloud = new pcl::PCLPointCloud2;
@@ -61,13 +63,13 @@ void pointCloudCallback(const sensor_msgs::PointCloud2ConstPtr& msg) {
 
     pcl_conversions::toPCL(*msg, *cloud);
     */
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_tmp(new pcl::PointCloud<pcl::PointXYZRGB>);
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_tmp2(new pcl::PointCloud<pcl::PointXYZRGB>);
+    //pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_tmp(new pcl::PointCloud<pcl::PointXYZRGB>);
+    //pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_tmp2(new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_filtered(new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_final(new pcl::PointCloud<pcl::PointXYZRGB>);
 
-    pcl::fromROSMsg(*msg, *cloud_tmp2);
+    //pcl::fromROSMsg(*msg, *cloud_tmp2);
     /*
     pcl::VoxelGrid<pcl::PointXYZRGB> sor;
     sor.setInputCloud(cloud_tmp);
