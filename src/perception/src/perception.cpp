@@ -63,19 +63,19 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& msg) 
 
     pcl_conversions::toPCL(*msg, *cloud);
     */
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_tmp(new pcl::PointCloud<pcl::PointXYZRGB>);
+    //pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_tmp(new pcl::PointCloud<pcl::PointXYZRGB>);
     //pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_tmp2(new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_filtered(new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_final(new pcl::PointCloud<pcl::PointXYZRGB>);
 
     //pcl::fromROSMsg(*msg, *cloud_tmp2);
-
+    /*
     pcl::VoxelGrid<pcl::PointXYZRGB> sor;
     sor.setInputCloud(msg);
     sor.setLeafSize(0.01, 0.01, 0.01);
     sor.filter(*cloud_tmp);
-
+    */
     //Eigen::Affine3f transform = Eigen::Affine3f::Identity();
 
     //(0.115, 0.0, 0.202),
@@ -107,7 +107,7 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& msg) 
 
     Eigen::Quaternionf rotation(w, x, y, z);
 
-    pcl::transformPointCloud(*cloud_tmp, *cloud, translation, rotation);
+    pcl::transformPointCloud(*msg, *cloud, translation, rotation);
 
     // GREEN
     /*
