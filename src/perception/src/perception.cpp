@@ -187,9 +187,9 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& cloud
     pcl_conversions::fromPCL(*cloud_filtered, output);
     */
 
-    sensor_msgs::PointCloud2 output;
+    //sensor_msgs::PointCloud2 output;
 
-    pcl::toROSMsg(*cloud_filtered, output);
+    //pcl::toROSMsg(*cloud_filtered, output);
 
     // PCL -> RIKTIG
     // z = x
@@ -210,7 +210,7 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& cloud
 
     std::cout << "Forward: " << forward / numPoints << "\tSide: " << side / numPoints << "\tHeight: " << height / numPoints << std::endl;
 
-    pub.publish(output);
+    //pub.publish(output);
 
     geometry_msgs::Point point;
     point.x = forward / numPoints;
