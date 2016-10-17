@@ -18,7 +18,7 @@
 	</node>
 
 	<!-- Localization -->
-	<node name="localization" pkg="localization" type="localization.py" />
+	<!-- <node name="localization" pkg="localization" type="localization.py" /> -->
 
 	<!-- Odometry -->
 	<include file="$(find odometry)/launch/odometry.launch"/>
