@@ -37,7 +37,7 @@
 	<include file="$(find wheels)/launch/controller.launch"/>
 
 	<!-- Realsense Camera -->
-	<include file="$(find realsense_camera)/launch/sr300_nodelet_rgbd.launch" />
+	<!-- <include file="$(find realsense_camera)/launch/sr300_nodelet_rgbd.launch" /> -->
 
 	<!-- UArm Core -->
 	<node name="uarm_core" pkg="uarm" output="screen" type="uarm_core.py" args="connect l"/>
