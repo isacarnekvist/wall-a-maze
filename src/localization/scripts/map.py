@@ -25,69 +25,45 @@ class Map:
                         continue
                     self.add_edge(*[float(c) for c in line.split()])
                     
-    def add_obstacle(obstacle):
+    def add_obstacle(self, obstacle):
         pass
     
     def add_edge(self, x1, y1, x2, y2):
         self.edges.append((x1, y1, x2, y2))
-    
-    def scan(self, x, y, theta):
-        """returns distances and derivatives in 360 degrees
+        
+    def scan_one(self, x, y, theta, alpha):
+        """returns distances for one angle
         x, y: float
              position in meters
         theta: float
             robot rotation in radians
+        alpha: float
+            in what direction, relative to robot, to scan
         """
         n = len(self.edges)
-        distances = np.zeros((n, 360))
-        dxs = np.zeros((n, 360))
-        dys = np.zeros((n, 360))
-        dthetas = np.zeros((n, 360))
+        distances = np.zeros(n)
         for i, edge in enumerate(self.edges):
-            dist, dx, dy, dtheta = self._intersections(x, y, theta, *edge)
-            dxs[i, :] = dx
-            dys[i, :] = dy
-            dthetas[i, :] = dtheta
-            distances[i, :] = dist
+            dist = self._distance(x, y, theta, alpha, *edge)
+            distances[i] = dist
         
-        min_inds = distances.argmin(axis=0)
-        return (
-            distances[min_inds, range(360)],
-            dxs[min_inds, range(360)],
-            dys[min_inds, range(360)],
-            dthetas[min_inds, range(360)]
-        )
-
-    def _intersections(self, x1, x2, theta, a1, a2, b1, b2):
+        return np.min(distances)
+    
+    def _distance(self, x1, x2, theta, alpha, a1, a2, b1, b2):
         """
-        Returns distances and derivatives given one position and one edge
+        Returns distance given one position, one edge, and an angle alpha
         """
-        distances = np.array([inf] * 360)
-        dx1 = np.array([inf] * 360)
-        dx2 = np.array([inf] * 360)
-        dtheta = np.array([inf] * 360)
         a = np.array([[a1, a2]]).T
         b = np.array([[b1, b2]]).T
         x = np.array([[x1, x2]]).T
-        for angle in range(360):
-            alpha = pi * angle / 180
-            try:
-                k = 1.0 / ((a2 - b2) * cos(theta + alpha) + sin(theta + alpha) * (b1 - a1))
-                A = np.array([
-                    [ a2 - b2   , b1 - a1   ],
-                    [-sin(theta + alpha), cos(theta + alpha)]
-                ])
-                s, t = (k * np.dot(A, (a - x))).flatten()
-                if 0 <= t <= 1 and 0 < s:
-                    distances[angle] = s
-                    dx1[angle] = k * (b2 - a2)
-                    dx2[angle] = k * (a1 - b1)
-                    f = (a1 - x1) * (a2 - b2) + (a2 - x2) * (b1 - a1)
-                    fprim = np.array([cos(theta + alpha), sin(theta + alpha)]).dot(x - a)
-                    g = 1 / k
-                    gprim = np.array([cos(theta + alpha), sin(theta + alpha)]).dot(b - a)
-                    dtheta[angle] = k ** 2 * (-gprim * f)
-            except ZeroDivisionError:
-                pass
-        
-        return distances, dx1, dx2, dtheta
+        try:
+            k = 1.0 / ((a2 - b2) * cos(theta + alpha) + sin(theta + alpha) * (b1 - a1))
+            A = np.array([
+                [ a2 - b2   , b1 - a1   ],
+                [-sin(theta + alpha), cos(theta + alpha)]
+            ])
+            s, t = (k * np.dot(A, (a - x))).flatten()
+            if 0 <= t <= 1 and 0 < s:
+                return s
+        except ZeroDivisionError:
+            pass
+        return np.inf
