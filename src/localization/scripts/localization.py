@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import time
-from math import cos, sin
+from math import cos, sin, atan2
 from datetime import datetime
 
 import numpy as np
@@ -10,11 +10,11 @@ import pandas as pd
 import tf
 import rospy
 from laser_geometry import LaserProjection
-from geometry_msgs.msg import PoseStamped, Twist
+from geometry_msgs.msg import PoseStamped, Twist, Point32
 from sensor_msgs.msg import LaserScan, PointCloud
 
 from map import Map
-from particle import Particle
+from particle import Particle, ParticleFilter
 
 N_LIDAR_MEASUREMENTS = 20
 
@@ -40,23 +40,22 @@ def laserscan_to_coords(scan):
 
 class Localization():
 
-    def __init__(self, n_particles=512, xlim=(0, 5), ylim=(0, 5), thetalim=(0, 2 * np.pi)):
+    def __init__(self, n_particles=8, xlim=(0, 3), ylim=(0, 3), thetalim=(0, 2 * np.pi)):
         rospy.init_node('localization')
 
+        self.n_particles = n_particles
         self.pose = PoseStamped()
         self.pose.header.frame_id = 'map'
         self.map = Map(map_path='/home/ras26/catkin_ws/src/ras_maze/ras_maze_map/maps/lab_maze_2016.txt')
 
-        self.particles = {
-            Particle(
-                np.random.rand() * (xlim[1] - xlim[0]) + xlim[0],
-                np.random.rand() * (ylim[1] - ylim[0]) + ylim[0],
-                np.random.rand() * (thetalim[1]  - thetalim[0]) + thetalim[0]
-            )
-            for _ in range(n_particles)
-        }
+        self.particle_filter = ParticleFilter(
+            n_particles=n_particles,
+            xlim=xlim,
+            ylim=ylim
+        )
 
         self.position_pub = rospy.Publisher('/position', PoseStamped, queue_size=10)
+        self.particles_pub = rospy.Publisher('/particles', PointCloud, queue_size=10)
 
         self.odometry_timestamp = None
         self.particle_update_timestamp = None
@@ -70,18 +69,14 @@ class Localization():
         rospy.Subscriber('/odometry', Twist, self.odometry_callback)
 
         # keep track of change of state by odometry
-        self.x_delta = 0.0
-        self.y_delta = 0.0
+        self.forward_delta = 0.0
         self.theta_delta = 0.0
 
         # State:
         self.last_state_update = datetime.now()
-        self.x = 0.2
-        self.y = 0.2
+        self.x = 1
+        self.y = 1
         self.theta = 0.0
-        self.Sigma = 0.01 * np.eye(3)
-
-        self.jacobian = np.zeros((N_LIDAR_MEASUREMENTS, 3))
 
         rate = rospy.Rate(125)
         while not rospy.is_shutdown():
@@ -94,22 +89,22 @@ class Localization():
             self.particle_update_timestamp = datetime.now()
             return
         # Calculate next state given controls and previous (current) state
+        # TODO have this somewhere
+
+        pc = PointCloud()
+        pc.header.stamp = rospy.Time.now()
+        pc.header.frame_id = 'map'
+        for i, p in enumerate(self.particle_filter.particles):
+            pc.points.append(Point32(p.x, p.y, 0))
+        self.particles_pub.publish(pc)
+
         timedelta = datetime.now() - self.particle_update_timestamp
         delta = timedelta.seconds + timedelta.microseconds / 1e6
 
         # TODO Update particles
-        for p in self.particles:
-            p.update(self.x_delta, self.y_delta, self.theta_delta)
-        # print('(mean, std) x: {}, {} \t y: {}, {} \t theta: {}, {}'.format(
-        #     np.mean([p.x for p in self.particles]),
-        #     np.std([p.x for p in self.particles]),
-        #     np.mean([p.y for p in self.particles]),
-        #     np.std([p.y for p in self.particles]),
-        #     np.mean([p.theta for p in self.particles]),
-        #     np.std([p.theta for p in self.particles])
-        # ))
-        self.x_delta = 0.0
-        self.y_delta = 0.0
+        self.particle_filter.update(self.forward_delta, self.theta_delta)
+        self.particle_filter.resample(self.lidar_coords, self.map, self.n_particles)
+        self.forward_delta = 0.0
         self.theta_delta = 0.0
 
         self.particle_update_timestamp = datetime.now()
@@ -125,7 +120,6 @@ class Localization():
         self.lidar_distances[:] = data.ranges
         self.lidar_distances[self.lidar_distances == np.inf] = np.nan
         self.lidar_coords = laserscan_to_coords(data)
-        print(self.lidar_coords[90, :])
 
     def odometry_callback(self, data):
         if self.odometry_timestamp is None:
@@ -135,11 +129,8 @@ class Localization():
         timedelta = datetime.now() - self.odometry_timestamp
         self.odometry_timestamp = datetime.now()
         delta_seconds = timedelta.seconds + timedelta.microseconds / 1e6
-        self.x_delta += delta_seconds * cos(self.theta) * data.linear.x
-        self.y_delta += delta_seconds * sin(self.theta) * data.linear.x
+        self.forward_delta += delta_seconds * data.linear.x
         self.theta_delta += delta_seconds * data.angular.z
-
-        # Implement?
 
 
 if __name__ == '__main__':
