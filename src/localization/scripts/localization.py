@@ -31,7 +31,11 @@ def laserscan_to_coords(scan):
         [np.cos(theta), -np.sin(theta)],
         [np.sin(theta),  np.cos(theta)]
     ])
-    return coords.dot(rotation_matrix)
+    rotated = coords.dot(rotation_matrix)
+    # Translation
+    rotated[:, 0] += (-0.009)
+    rotated[:, 1] += 0.08
+    return rotated
     
 
 class Localization():
@@ -96,14 +100,14 @@ class Localization():
         # TODO Update particles
         for p in self.particles:
             p.update(self.x_delta, self.y_delta, self.theta_delta)
-        print('(mean, std) x: {}, {} \t y: {}, {} \t theta: {}, {}'.format(
-            np.mean([p.x for p in self.particles]),
-            np.std([p.x for p in self.particles]),
-            np.mean([p.y for p in self.particles]),
-            np.std([p.y for p in self.particles]),
-            np.mean([p.theta for p in self.particles]),
-            np.std([p.theta for p in self.particles])
-        ))
+        # print('(mean, std) x: {}, {} \t y: {}, {} \t theta: {}, {}'.format(
+        #     np.mean([p.x for p in self.particles]),
+        #     np.std([p.x for p in self.particles]),
+        #     np.mean([p.y for p in self.particles]),
+        #     np.std([p.y for p in self.particles]),
+        #     np.mean([p.theta for p in self.particles]),
+        #     np.std([p.theta for p in self.particles])
+        # ))
         self.x_delta = 0.0
         self.y_delta = 0.0
         self.theta_delta = 0.0
