@@ -11,9 +11,9 @@ from geometry_msgs.msg import Point
 def robot_to_uarm(uarm_cc):
     br = tf.TransformBroadcaster()
     br.sendTransform(
-        # Y is how much the laser is translated to the right
-        # X is how much the laser is translated forwards
-        (-0.105,0.086,0.051), #0.0), #0.051
+        # Y is how much the arm is translated to the right when looking forward
+        # X is how much the arm is translated forwards
+        (-0.105,0.086,-0.051), #0.0), #0.051
         tf.transformations.quaternion_from_euler(0, 0, 4.5 * pi / 180.0),
         rospy.Time.now(),
         "uarm",
