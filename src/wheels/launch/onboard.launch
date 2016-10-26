@@ -39,7 +39,8 @@
 	<!-- Realsense Camera -->
 	<!-- <include file="$(find realsense_camera)/launch/sr300_nodelet_rgbd.launch" /> -->
 
-	<!-- UArm Core -->
-	<node name="uarm_core" pkg="uarm" output="screen" type="uarm_core.py" args="connect l"/>
-
+	<!-- UArm -->
+	<!-- #OLDCODE node name="uarm_core" pkg="uarm" output="screen" type="uarm_core.py" args="connect l"/ -->
+	<include file="$(find uarm)/launch/kth_uarm.launch"/>
+	
 </launch>

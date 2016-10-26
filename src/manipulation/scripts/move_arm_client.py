@@ -15,9 +15,9 @@ def goal_callback(data):
 	goal_pos = Coords()
 	print("Input data", data)
 	scale = 100.0 # meter to cm
-	goal_pos.x = data.x*scale + 5.0
-	goal_pos.y = data.y*scale - 2.0
-	goal_pos.z = data.z*scale - 8.0
+	goal_pos.x = data.x*scale# + 5.0
+	goal_pos.y = data.y*scale# - 2.0
+	goal_pos.z = data.z*scale #- 8.0
 	
 	
 
