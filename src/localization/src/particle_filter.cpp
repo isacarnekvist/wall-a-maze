@@ -3,6 +3,12 @@
 #include <iostream>
 #include <algorithm>
 
+#include <ros/ros.h>
+#include <geometry_msgs/Point32.h>
+#include <tf/transform_datatypes.h>
+#include <sensor_msgs/PointCloud.h>
+#include <geometry_msgs/PoseStamped.h>
+
 #include "map.hpp"
 #include "stats.hpp"
 #include "constants.hpp"
@@ -136,19 +142,50 @@ void ParticleFilter::printParticles() {
     }
 }
 
-int main() {
+int main(int argc, char **argv) {
+    ros::init(argc, argv, "localization");
+    ros::NodeHandle node_handle;
+    ros::Publisher particle_publisher = node_handle.advertise<sensor_msgs::PointCloud>("/particles", 10);
+    ros::Publisher position_publisher = node_handle.advertise<geometry_msgs::PoseStamped>("/position", 10);
+
     Map map = Map();
-    ParticleFilter pf = ParticleFilter(512, 0, 3, 0, 3, 0, 2 * M_PI);
+    ParticleFilter pf = ParticleFilter(2048, 0, 3, 0, 3, 0, 2 * M_PI);
     double x, y, theta;
     Particle robot (0.4, 0.15, 1.1);
-    for (int i = 0; i < 25; i++) {
-        robot.x += cos(robot.theta) * 0.1;
-        robot.y += sin(robot.theta) * 0.1;
-        robot.theta -= 0.04;
-        pf.move(0.1, -0.04, 0.1);
+    float distance = 0.05;
+    float theta_delta = -0.02;
+    for (int i = 0; i < 50; i++) {
+        robot.x += cos(robot.theta) * distance;
+        robot.y += sin(robot.theta) * distance;
+        robot.theta += theta_delta;
+        pf.move(distance, theta_delta, 1.5);
         cout << "Truth:" << endl;
         robot.printParticle();
         pf.resample(map, robot.scan(map));
+
+        geometry_msgs::PoseStamped pose;
+        pose.header.stamp = ros::Time::now();
+        pose.header.frame_id = "map";
+        pose.pose.position.x = robot.x;
+        pose.pose.position.y = robot.y;
+        pose.pose.orientation.x = cos(robot.theta / 2);
+        pose.pose.orientation.y = sin(robot.theta / 2);
+
+        sensor_msgs::PointCloud pcl;
+        pcl.header.stamp = ros::Time::now();
+        pcl.header.frame_id = "map";
+        pcl.points.resize(pf.n_particles);
+        for (int i = 0; i < pf.n_particles; i++) {
+            Particle &p = pf.particles[i];
+            geometry_msgs::Point32 point;
+            point.x = p.x;
+            point.y = p.y;
+            point.z = 0.0;
+            pcl.points[i] = point;
+        }
+        particle_publisher.publish(pcl);
+        position_publisher.publish(pose);
+
         cout << "Estimate:" << endl;
         cout << pf.mean_estimate_x() << " " << pf.mean_estimate_y() << " " << pf.mean_estimate_theta() << endl;
         cout << endl;

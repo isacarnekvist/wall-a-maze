@@ -30,10 +30,10 @@ public:
     float mean_estimate_y();
     float mean_estimate_theta();
     vector<Particle> particles; /* Make private? */
-private:
-    void sampleParticles();
     int n_particles;
     float min_x, max_x, min_y, max_y, min_theta, max_theta;
+private:
+    void sampleParticles();
 };
 
 #endif

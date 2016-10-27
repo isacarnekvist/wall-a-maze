@@ -49,7 +49,7 @@ void Map::readWalls() {
         cerr << "Environment variable MAP_PATH not set!" << endl;
         exit(-1);
     }
-    ifstream myfile ("../scripts/map.txt");
+    ifstream myfile (map_path);
     float x;
     if (!myfile.is_open()) {
         cerr << "Could not open map file: " << map_path << endl;
