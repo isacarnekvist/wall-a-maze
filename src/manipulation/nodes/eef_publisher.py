@@ -5,8 +5,7 @@ import rospy
 import math
 import tf
 
-from geometry_msgs.msg import PointStamped
-from geometry_msgs.msg import Point
+from geometry_msgs.msg import PointStamped, Point
 from std_msgs.msg import Header
 
 if __name__ == '__main__':
