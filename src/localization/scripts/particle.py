@@ -1,3 +1,6 @@
+from math import atan2
+from copy import deepcopy
+
 import numpy as np
 
 
@@ -7,10 +10,11 @@ class Particle:
         self.x = x
         self.y = y
         self.theta = theta
+        self.dists = np.zeros(360)
         
     def update(self, forward_delta, delta_theta):
-        self.theta += delta_theta + np.random.normal(0, 0.08)
-        forward_noise = np.random.normal(0, abs(forward_delta * 0.1) + 0.1)
+        self.theta += delta_theta + np.random.normal(0, 0.02)
+        forward_noise = np.random.normal(0, abs(forward_delta * 0.01) + 0.005)
         self.x += np.cos(self.theta) * (forward_delta + forward_noise)
         self.y += np.sin(self.theta) * (forward_delta + forward_noise)
         
@@ -18,16 +22,17 @@ class Particle:
         return 'Particle at: {} {} {}'.format(self.x, self.y, self.theta)
     
     def likelihood(self, lidar_coords, map_):
-        dists = []
-        for x, y in lidar_coords:
+        self.dists *= 0
+        self.dists += 0
+        for i, (x, y) in enumerate(lidar_coords):
             if np.abs(x) == np.inf or np.abs(y) == np.inf:
                 continue
             alpha = atan2(-x, y)
             dist = map_.scan_one(self.x, self.y, self.theta, alpha)
-            #                 measured             expected
-            dists.append(abs(np.sqrt(x ** 2 + y ** 2) - dist))
-        dists.sort()
-        return np.exp(-sum(dists[:20]))
+            #                        measured             expected
+            self.dists[i] = abs(np.sqrt(x ** 2 + y ** 2) - dist)
+        #self.dists.sort()
+        return np.exp(-sum(self.dists[:20]))
 
 
 class ParticleFilter:
@@ -52,6 +57,7 @@ class ParticleFilter:
         weights = np.zeros(len(self.particles))
         for i, p in enumerate(self.particles):
             weights[i] = p.likelihood(lidar_coords, map_)
+        return
         weights /= weights.sum()
         samples = np.random.multinomial(n_samples, weights)
         
@@ -65,3 +71,17 @@ class ParticleFilter:
     def update(self, delta_forward, delta_theta):
         for p in self.particles:
             p.update(delta_forward, delta_theta)
+
+    def mean(self):
+        return (
+            np.mean([p.x for p in self.particles]),
+            np.mean([p.y for p in self.particles]),
+            np.mean([p.theta for p in self.particles])
+        )
+
+    def std(self):
+        return (
+            np.std([p.x for p in self.particles]),
+            np.std([p.y for p in self.particles]),
+            np.std([p.theta for p in self.particles])
+        )
