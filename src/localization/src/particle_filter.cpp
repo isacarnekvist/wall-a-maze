@@ -52,7 +52,7 @@ float Particle::likelihood(const Map &map, const vector<tuple<float, float> > &s
 /* For debugging purposes simulating a robot with measurements */
 vector<tuple<float, float> > Particle::scan(const Map &map) {
     vector<tuple<float, float> > res;
-    for (int i = 0; i < 360; i++) {
+    for (int i = 0; i < 360; i += 4) {
         float angle = M_PI * i / 180;
         float distance = map.distance(x, y, theta + angle) + 0.05 * normal_sampler(random_engine);
         if (normal_sampler(random_engine) > 1.2) {
