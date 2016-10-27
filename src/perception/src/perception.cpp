@@ -1,6 +1,6 @@
 #include <ros/ros.h>
 #include "sensor_msgs/Image.h"
-#include "geometry_msgs/Point.h"
+#include "geometry_msgs/PointStamped.h"
 #include "sensor_msgs/PointCloud2.h"
 #include <image_transport/image_transport.h>
 #include <opencv2/highgui/highgui.hpp>
@@ -212,12 +212,15 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& msg) 
 
     pub.publish(output);
 
-    geometry_msgs::Point point;
-    point.x = forward / numPoints;
-    point.y = side / numPoints;
-    point.z = height / numPoints;
+    geometry_msgs::PointStamped pointStamped;
+    std_msgs::Header pheader;
+    //pheader.stamp = inf; // not set!
+    pheader.frame_id = "wheel_center";
+    pointStamped.point.x = forward / numPoints;
+    pointStamped.point.y = side / numPoints;
+    pointStamped.point.z = height / numPoints;
 
-    object_pub.publish(point);
+    object_pub.publish(pointStamped);
 
 }
 
@@ -342,7 +345,7 @@ int main(int argc, char **argv) {
 
   pub = nh.advertise<sensor_msgs::PointCloud2> ("output", 1);
 
-  object_pub = nh.advertise<geometry_msgs::Point> ("objectPos_wheelcenter", 1);
+  object_pub = nh.advertise<geometry_msgs::PointStamped> ("objectPos_wheelcenter", 1);
 
   ros::spin();
 
