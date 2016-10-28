@@ -4,9 +4,12 @@ import time
 from math import cos, sin, atan2
 from datetime import datetime
 
+<<<<<<< HEAD
 import numpy as np
 import pandas as pd
 
+=======
+>>>>>>> master
 import tf
 import rospy
 from laser_geometry import LaserProjection
@@ -127,6 +130,20 @@ class Localization():
             return
 
         timedelta = datetime.now() - self.odometry_timestamp
+<<<<<<< HEAD
+=======
+        delta_seconds = timedelta.seconds + timedelta.microseconds / 1e6
+
+        # Update position
+        self.theta += delta_seconds * data.angular.z
+        self.pose.pose.position.x += delta_seconds * data.linear.x * cos(self.theta)
+        self.pose.pose.position.y += delta_seconds * data.linear.x * sin(self.theta)
+	orientation = tf.transformations.quaternion_from_euler(0, 0, self.theta)
+	self.pose.pose.orientation.x = orientation[0]
+	self.pose.pose.orientation.y = orientation[1]
+	self.pose.pose.orientation.z = orientation[2]
+	self.pose.pose.orientation.w = orientation[3]
+>>>>>>> master
         self.odometry_timestamp = datetime.now()
         delta_seconds = timedelta.seconds + timedelta.microseconds / 1e6
         self.forward_delta += delta_seconds * data.linear.x

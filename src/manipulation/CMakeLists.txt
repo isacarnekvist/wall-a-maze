@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(perception)
+project(manipulation)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -8,11 +8,7 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
   std_msgs
-  image_transport
-  cv_bridge
-  sensor_msgs
-  pcl_conversions
-  pcl_ros
+  tf
 )
 
 ## System dependencies are found with CMake's conventions
@@ -105,10 +101,9 @@ find_package(catkin REQUIRED COMPONENTS
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-  DEPENDS opencv
 #  INCLUDE_DIRS include
-#  LIBRARIES perception
-#  CATKIN_DEPENDS roscpp rospy std_msgs
+#  LIBRARIES manipulation
+#  CATKIN_DEPENDS pyuarm roscpp rospy std_msgs uarm
 #  DEPENDS system_lib
 )
 
@@ -121,33 +116,29 @@ catkin_package(
 # include_directories(include)
 include_directories(
   ${catkin_INCLUDE_DIRS}
-  ${OpenCV_INCLUDE_DIRS}
-  #${PCL_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
-# add_library(perception
-#   src/${PROJECT_NAME}/perception.cpp
+# add_library(manipulation
+#   src/${PROJECT_NAME}/manipulation.cpp
 # )
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
 ## either from message generation or dynamic reconfigure
-# add_dependencies(perception ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+# add_dependencies(manipulation ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
-add_executable(perception src/perception.cpp)
+# add_executable(manipulation_node src/manipulation_node.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
-add_dependencies(perception ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+# add_dependencies(manipulation_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(perception
-  ${catkin_LIBRARIES}
-  ${OpenCV_LIBRARIES}
-  #${PCL_LIBRARIES}
-)
+# target_link_libraries(manipulation_node
+#   ${catkin_LIBRARIES}
+# )
 
 #############
 ## Install ##
@@ -164,7 +155,7 @@ target_link_libraries(perception
 # )
 
 ## Mark executables and/or libraries for installation
-# install(TARGETS perception perception_node
+# install(TARGETS manipulation manipulation_node
 #   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 #   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 #   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
@@ -189,7 +180,7 @@ target_link_libraries(perception
 #############
 
 ## Add gtest based cpp test target and link libraries
-# catkin_add_gtest(${PROJECT_NAME}-test test/test_perception.cpp)
+# catkin_add_gtest(${PROJECT_NAME}-test test/test_manipulation.cpp)
 # if(TARGET ${PROJECT_NAME}-test)
 #   target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
 # endif()

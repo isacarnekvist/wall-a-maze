@@ -1,0 +1,7 @@
+<launch>
+	<!-- <rosparam file="$(find general)/config/general_params.yaml" command="load" /> -->
+	<node pkg="manipulation" type="object_wToA_listener.py" name="object_wToA_listener" />
+	<node pkg="manipulation" type="arm_broadcaster.py" name="arm_broadcaster" />
+	<node pkg="manipulation" type="pub_uarm_curpos.py" name="pub_uarm_curpos" />
+		
+</launch>
