@@ -26,21 +26,30 @@ def object_callback(data):
 		return
 		
 	rot_euler = tf.transformations.euler_from_quaternion(rot)
-	print rot_euler
-	 # output np array?
+	
+	# output np array?
 
 	# Maybe .transformPoint easier but dont know how to define from where to which frame
 
 	r_posObject = np.array([(data.x),(data.y),(data.z)])
+	print 'Object in robot coordinates {}' .format(r_posObject)
 	
 	# Do transform, Replace angle with rot_euler
 	angle = 4.5*pi / 180.0
 	Rotation_z = np.array([(math.cos(angle), math.sin(angle), 0),(-math.sin(angle),math.cos(angle),0),(0, 0, 1)])
+	translation = np.transpose(trans)
 	
-	a_posObject = Rotation_z.dot(r_posObject) + trans
+	a_posObject = np.add(Rotation_z.dot(r_posObject), translation)
 	
-	print a_posObject
+	# Do dirty corrections
+	a_posObject[0] = a_posObject[0]+0.05
+	a_posObject[1] = a_posObject[1]-0.02
+	
+	print 'Object in arm coordinates {}' .format(a_posObject)
+	#print 'Translation is {}' .format(translation)
 
+	
+	
 	objectPos_arm = Point(a_posObject[0],a_posObject[1],a_posObject[2])
 	objectPos_arm_pub.publish(objectPos_arm)
 
@@ -58,8 +67,8 @@ if __name__ == '__main__':
 		try:
 			(trans,rot) = listener.lookupTransform('/wheel_center', '/uarm', rospy.Time(0))
 			print 'Oh yeah!'
-			print trans
-			print rot
+			print 'Translation is {}' .format(trans)
+			print 'Rotation is {} ' .format(rot)
 			break	# It will always be the same
 		except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
 			print 'Darn it!'
