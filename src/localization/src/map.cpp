@@ -22,23 +22,27 @@ float Map::distance(float x0, float y0, float angle) const {
 
     for (Wall w : walls) {
         /* Rotate beam along positive x-axis */
-        y1 = (w.y1 - y0) * ca + (w.x1 - x0) * sa;
-        y2 = (w.y2 - y0) * ca + (w.x2 - x0) * sa;
+        y1 = (w.y1 - y0) * ca - (w.x1 - x0) * sa;
+        y2 = (w.y2 - y0) * ca - (w.x2 - x0) * sa;
         if (y1 * y2 > 0.0) {
             /* Obstacle does not intersect positive x-axis */
             continue;
         }
         x1 = (w.x1 - x0) * ca + (w.y1 - y0) * sa;
         x2 = (w.x2 - x0) * ca + (w.y2 - y0) * sa;
+
         if ((x1 * y2 - x2 * y1) * y2 < 0.0) { 
             /* Fancy triangle check */
             continue;
         }
         /* Invariant: Intersection of current wall and beam */
-        min_dist = min(
-            min_dist,
-            (x1 * y1 - x2 * y2) / (y1 - y2)
-        );
+        float dist = (x1 * (y2 - y1) - y1 * (x2 - x1)) / (y2 - y1);
+        if (dist > 0.0) {
+            min_dist = min(
+                min_dist,
+                dist
+            );
+        }
     }
     return min_dist;
 }
@@ -67,4 +71,17 @@ void Map::readWalls() {
         walls.push_back(w);
     }
     myfile.close();
+}
+
+int main() {
+    Map m = Map();
+    cout << "dists = np.array([" << endl;
+    for (int angle = 0; angle < 360; angle++) {
+        float alpha1 = M_PI * (angle) / 180.0;
+        float alpha2 = M_PI * (angle + 45) / 180.0;
+        printf("[%f, %f],\n", alpha1, m.distance(2.2, 1.2, alpha2));
+        //m.distance(2.2, 1.2, alpha);
+    }
+    cout << "])" << endl;
+    return 0;
 }
