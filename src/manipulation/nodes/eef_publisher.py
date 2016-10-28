@@ -19,8 +19,9 @@ if __name__ == '__main__':
 	rate = rospy.Rate(10.0)
 	while not rospy.is_shutdown():
 		try:
-			#(trans,rot) = listener.lookupTransform('/wheel_center', '/eef', rospy.Time(0))
-			(trans,rot) = listener.lookupTransform('/eef', '/wheel_center', rospy.Time(0))
+			#(trans,rot) = listener.lookupTransform('wheel_center', 'eef', rospy.Time(0))
+			#(trans,rot) = listener.lookupTransform('/eef', '/wheel_center', rospy.Time(0))
+			(trans,rot) = listener.lookupTransform('uarm', 'eef', rospy.Time(0))
 		except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
 			continue
 			

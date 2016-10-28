@@ -10,7 +10,6 @@ from std_msgs.msg import Header
 
 goal_pos = None
 
-
 def goal_callback(data):
 	global goal_pos	
 	goal_pos = Point()
@@ -20,8 +19,8 @@ def goal_callback(data):
 	
 	try:
 		listener2 = tf.TransformListener()
-		listener2.waitForTransform("/uarm", "/wheel_center", rospy.Time(), rospy.Duration(4.0))
-		dataTrans = listener2.transformPoint('uarm',data)
+		listener2.waitForTransform("eef", "wheel_center", rospy.Time(), rospy.Duration(4.0))
+		dataTrans = listener2.transformPoint('eef',data)
 	except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
 		print "Failed to transform  point"
 		return
@@ -36,8 +35,8 @@ def transform_wheelToArm(data2):
 
 	try:
 		listener = tf.TransformListener()
-		listener.waitForTransform("/uarm", "/wheel_center", rospy.Time(), rospy.Duration(4.0))
-		data_arm = listener.transformPoint('uarm',data2)
+		listener.waitForTransform("eef", "wheel_center", rospy.Time(), rospy.Duration(4.0))
+		data_arm = listener.transformPoint('eef',data2)
 	except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
 		print "Failed to transform  point"
 		return
@@ -72,7 +71,7 @@ if __name__ == "__main__":
 
 				
 	# Resting position
-	initPos_wheel = Point(20.0, 0.0,22.0)	# in wheel frame
+	initPos_wheel = Point(-0.11,0.02,-0.28)	# in wheel frame
 	initPos_wheelHeader = Header()
 	initPos_wheelHeader.frame_id = 'wheel_center'
 	initPos_wheelStamped = PointStamped(initPos_wheelHeader, initPos_wheel)
@@ -83,6 +82,9 @@ if __name__ == "__main__":
 
 	# Move to resting pose
 	print("Sending it to resting position", initPos_arm)
+	
+	sys.exit()
+	
 	initial_state = move_to_pos_client(initPos_arm, eef_orientation, move_mode, duration, ignore_orientation, interpolation_type, check_limits)
 	print("In resting position",initial_state)
 	rospy.sleep(2.0)
