@@ -38,16 +38,17 @@ private:
 
 Localization::Localization(ros::NodeHandle &node_handle) {
     recieved_laser = false;
+    recieved_odometry = false;
     position_publisher = node_handle.advertise<geometry_msgs::PoseStamped>("/position", 10);
     particle_publisher = node_handle.advertise<sensor_msgs::PointCloud>("/particles", 10);
     map = Map();
     particle_filter = new ParticleFilter(
         /* TODO Change these to be set from the map */
-        2048,       /* Number of particles */
+        4096,       /* Number of particles */
         0,          /* x_min */
-        2.46,          /* x_max */
+        2.46,       /* x_max */
         0,          /* y_min */
-        2.43,          /* y_max */
+        2.43,       /* y_max */
         0,          /* theta_min */
         2 * M_PI    /* theta_max */
     );
@@ -143,26 +144,4 @@ int main(int argc, char **argv) {
     }
 
     return 0;
-
-    // double x, y, theta;
-    // Particle robot (0.4, 0.15, 1.1);
-    // float distance = 0.05;
-    // float theta_delta = -0.02;
-    // for (int i = 0; i < 50; i++) {
-    //     robot.x += cos(robot.theta) * distance;
-    //     robot.y += sin(robot.theta) * distance;
-    //     robot.theta += theta_delta;
-    //     pf.move(distance, theta_delta, 1.5);
-    //     cout << "Truth:" << endl;
-    //     robot.printParticle();
-    //     pf.resample(map, robot.scan(map));
-
-
-    //     position_publisher.publish(pose);
-
-    //     cout << "Estimate:" << endl;
-    //     cout << pf.mean_estimate_x() << " " << pf.mean_estimate_y() << " " << pf.mean_estimate_theta() << endl;
-    //     cout << endl;
-    // }
-    // return 0;
 }

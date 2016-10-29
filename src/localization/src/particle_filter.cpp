@@ -21,48 +21,55 @@ normal_distribution<float> normal_sampler (0, 1);
 
 void Particle::move(float linear, float angular, float delta_seconds) {
     /* Here are parameters that probably will need tuning! */
-    float k = (abs(linear) * 0.01 + abs(angular) * 0.01 + 0.10);
-    float theta_mean = theta; // + angular / 2;
+    float k_linear  = (0.05 * abs(linear) + 0.6 * abs(angular) + 0.3);
+    float k_angular = (0.05 * abs(linear) + 1.0 * abs(angular) + 0.5);
 
     /* Update with noise! */
-    x += (linear * cos(theta_mean) + k * normal_sampler(random_engine)) * delta_seconds;
-    y += (linear * sin(theta_mean) + k * normal_sampler(random_engine)) * delta_seconds;
-    theta += (angular + 0.1 * k * normal_sampler(random_engine)) * delta_seconds;
+    theta += (angular + k_angular * normal_sampler(random_engine)) * delta_seconds;
+    x += (linear * cos(theta) + k_linear * normal_sampler(random_engine)) * delta_seconds;
+    y += (linear * sin(theta) + k_linear * normal_sampler(random_engine)) * delta_seconds;
+}
+
+
+/*
+ * When sorting how far off the measurments are below, the sorting crashes on inf
+ * special casing this here
+ */
+bool wtf_less_than_comparator(float a, float b) {
+    if (a == INF && b == INF) return true;
+    if (a == INF) return false;
+    if (b == INF) return true;
+    return a < b;
 }
 
 float Particle::likelihood(const Map &map, const vector<tuple<float, float> > &scans) {
     vector<float> discrepancies;
+    for (int angle = 0; angle < 360; angle++) {
+        float alpha = M_PI * angle / 180.0;
+    }
     float angle, scan, discrepancy_sum;
     discrepancy_sum = 0.0;
     for (const tuple<float, float> &t : scans) {
         angle = get<0>(t);
         scan = get<1>(t);
-        if (abs(scan) == INF) {
-            continue;
+        if (scan < 0.2) continue;
+        float map_distance = map.distance(x, y, theta + angle);
+        if (scan == INF && map_distance == INF) {
+            discrepancies.push_back(0.0);
+        } else if (scan == INF || map_distance == INF) {
+            discrepancies.push_back(1.0);
+        } else {
+            discrepancies.push_back(abs(scan - map_distance));
         }
-        discrepancies.push_back(abs(scan - map.distance(x, y, theta + angle)));
     }
-    sort(discrepancies.begin(), discrepancies.end());
-    for (int i = 0; i < 40; i++) {
+    sort(discrepancies.begin(), discrepancies.end(), wtf_less_than_comparator);
+    int max_discrepancies = 72;
+    int n_discrepancies = discrepancies.size();
+    int n_look_at = min(max_discrepancies, n_discrepancies);
+    for (int i = 0; i < n_look_at; i++) {
         discrepancy_sum += discrepancies[i];
     }
-    return exp(-(discrepancy_sum));
-}
-
-/* For debugging purposes simulating a robot with measurements */
-vector<tuple<float, float> > Particle::scan(const Map &map) {
-    vector<tuple<float, float> > res;
-    for (int i = 0; i < 360; i += 4) {
-        float angle = M_PI * i / 180;
-        float distance = map.distance(x, y, theta + angle) + 0.05 * normal_sampler(random_engine);
-        if (normal_sampler(random_engine) > 1.2) {
-            distance = INF;
-        }
-        res.push_back(
-            make_tuple(angle, distance)
-        );
-    }
-    return res;
+    return exp(- 2 * discrepancy_sum / n_look_at);
 }
 
 void Particle::printParticle() {

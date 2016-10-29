@@ -13,9 +13,6 @@ public:
     float x, y, theta;
     float likelihood(const Map &map, const vector<tuple<float, float> > &scans);
     void printParticle();
-
-    /* Use only for debug purposes letting a particle equal the robot */
-    vector<tuple<float, float> > scan(const Map &map);
 private:
     
 };

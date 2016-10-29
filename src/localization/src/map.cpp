@@ -72,16 +72,3 @@ void Map::readWalls() {
     }
     myfile.close();
 }
-
-int main() {
-    Map m = Map();
-    cout << "dists = np.array([" << endl;
-    for (int angle = 0; angle < 360; angle++) {
-        float alpha1 = M_PI * (angle) / 180.0;
-        float alpha2 = M_PI * (angle + 45) / 180.0;
-        printf("[%f, %f],\n", alpha1, m.distance(2.2, 1.2, alpha2));
-        //m.distance(2.2, 1.2, alpha);
-    }
-    cout << "])" << endl;
-    return 0;
-}
