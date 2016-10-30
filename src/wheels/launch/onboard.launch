@@ -24,9 +24,6 @@
 	<include file="$(find odometry)/launch/odometry.launch"/>
 	
 	<node name="laser_broadcaster" pkg="localization" type="laser_broadcaster.py" />
-	<!--
-	<node pkg="tf" type="static_transform_publisher" name="laser_broadcaster" args="0.08 -0.009 0.0 0 0 -91.5*pi/180 wheel_center laser 8" />
-	-->	
 	<node name="robot_broadcaster" pkg="localization" type="robot_broadcaster.py" />
 	
 	<!-- Laser scanner -->

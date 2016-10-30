@@ -52,7 +52,7 @@ float Particle::likelihood(const Map &map, const vector<tuple<float, float> > &s
     for (const tuple<float, float> &t : scans) {
         angle = get<0>(t);
         scan = get<1>(t);
-        if (scan < 0.2) continue;
+        if (scan < 0.15) continue;
         float map_distance = map.distance(x, y, theta + angle);
         if (scan == INF && map_distance == INF) {
             discrepancies.push_back(0.0);
@@ -69,7 +69,7 @@ float Particle::likelihood(const Map &map, const vector<tuple<float, float> > &s
     for (int i = 0; i < n_look_at; i++) {
         discrepancy_sum += discrepancies[i];
     }
-    return exp(- 2 * discrepancy_sum / n_look_at);
+    return exp(- 4 * discrepancy_sum / n_look_at);
 }
 
 void Particle::printParticle() {
