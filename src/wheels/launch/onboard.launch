@@ -18,16 +18,12 @@
 	</node>
 
 	<!-- Localization -->
-	<node name="localization" pkg="localization" type="localization.py" />
+	<!-- <node name="localization" pkg="localization" type="localization.py" /> -->
 
 	<!-- Odometry -->
 	<include file="$(find odometry)/launch/odometry.launch"/>
-		
 	
 	<node name="laser_broadcaster" pkg="localization" type="laser_broadcaster.py" />
-	<!--
-	<node pkg="tf" type="static_transform_publisher" name="laser_broadcaster" args="0.08 -0.009 0.0 0 0 -91.5*pi/180 wheel_center laser 8" />
-	-->	
 	<node name="robot_broadcaster" pkg="localization" type="robot_broadcaster.py" />
 	
 	<!-- Laser scanner -->
@@ -40,6 +36,9 @@
 	<!-- <include file="$(find realsense_camera)/launch/sr300_nodelet_rgbd.launch" /> -->
 
 	<!-- UArm Core -->
-	<node name="uarm_core" pkg="uarm" output="screen" type="uarm_core.py" args="connect l"/>
+	<!-- <node name="uarm_core" pkg="uarm" output="screen" type="uarm_core.py" args="connect l"/> -->
+
+	<!-- Map Node -->
+	<node name="ras_maze_map" pkg="ras_maze_map" type="ras_maze_map_node" args="_map_file:=$(env MAP_PATH)"/>
 
 </launch>

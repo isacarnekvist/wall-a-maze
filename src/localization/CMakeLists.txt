@@ -112,7 +112,6 @@ catkin_package(
 
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
-# include_directories(include)
 include_directories(
   ${catkin_INCLUDE_DIRS}
 )
@@ -186,3 +185,7 @@ include_directories(
 
 ## Add folders to be run by python nosetests
 # catkin_add_nosetests(test)
+
+set(CMAKE_CXX_FLAGS "-std=c++11 ${CMAKE_CXX_FLAGS}")
+add_executable(localization src/localization.cpp src/map.cpp src/particle_filter.cpp src/stats.cpp)
+target_link_libraries(localization ${catkin_LIBRARIES})
