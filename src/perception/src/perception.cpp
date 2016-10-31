@@ -55,6 +55,37 @@ int iHighV = 255;   // 255
 ros::Publisher pub;
 ros::Publisher object_pub;
 
+void HSVFilter(pcl::PointCloud<pcl::PointXYZHSV>::Ptr cloud_in, pcl::PointCloud<pcl::PointXYZHSV>::Ptr cloud_out, double hMin, double hMax, double sMin, double sMax, double vMin, double vMax) {
+    /*
+    pcl::PointIndices::Ptr indices (new pcl::PointIndices ());
+    for (size_t i = 0; i < cloud_in.points.size(); i++) {
+        if (cloud_in.points[i].h >= hMin && cloud_in.points[i].h <= hMax && cloud_in.points[i].s >= sMin && cloud_in.points[i].s <= sMax && cloud_in.points[i].v >= vMin && cloud_in.points[i].v <= vMax) {
+            indices->indices.push_back(i);
+        }
+    }
+    */
+
+    pcl::PassThrough<pcl::PointXYZHSV> pass;
+
+    pass.setInputCloud (cloud_in);
+    pass.setFilterFieldName ("h");
+    pass.setFilterLimits (hMin, hMax);
+    pass.setFilterLimitsNegative (false);
+    pass.filter (*cloud_in);
+
+    pass.setInputCloud (cloud_in);
+    pass.setFilterFieldName ("s");
+    pass.setFilterLimits (sMin, sMax);
+    pass.setFilterLimitsNegative (false);
+    pass.filter (*cloud_in);
+
+    pass.setInputCloud (cloud_in);
+    pass.setFilterFieldName ("s");
+    pass.setFilterLimits (sMin, sMax);
+    pass.setFilterLimitsNegative (false);
+    pass.filter (*cloud_out);
+}
+
 void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZHSV>::ConstPtr& input_cloud) {
 
     // Filtering input scan to increase speed of registration.
@@ -108,7 +139,7 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZHSV>::ConstPtr& input
     int iLowV = 130;      // 0
     int iHighV = 255;   // 255
 
-
+    /*
     pcl::ConditionAnd<pcl::PointXYZHSV>::Ptr color_cond (new pcl::ConditionAnd<pcl::PointXYZHSV> ());
       color_cond->addComparison (pcl::PackedRGBComparison<pcl::PointXYZHSV>::Ptr (new pcl::PackedRGBComparison<pcl::PointXYZHSV> ("h", pcl::ComparisonOps::LT, iHighH)));
       color_cond->addComparison (pcl::PackedRGBComparison<pcl::PointXYZHSV>::Ptr (new pcl::PackedRGBComparison<pcl::PointXYZHSV> ("h", pcl::ComparisonOps::GT, iLowH)));
@@ -122,6 +153,9 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZHSV>::ConstPtr& input
     condrem.setKeepOrganized(true);
 
     condrem.filter(*cloud_filtered);
+    */
+
+    HSVFilter(cloud, cloud_filtered, iLowH, iHighH, iLowS, iHighS, iLowV, iHighV);
 
 
     // Filter so only top remains
