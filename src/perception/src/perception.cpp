@@ -26,6 +26,8 @@
 
 #include <pcl_ros/point_cloud.h>
 
+#include <pcl/filters/approximate_voxel_grid.h>
+
 #define PI           3.14159265358979323846  /* pi */
 
 /*
@@ -53,37 +55,22 @@ int iHighV = 255;   // 255
 ros::Publisher pub;
 ros::Publisher object_pub;
 
-void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& msg) {
-    //std::cout << "Height: " << msg->height << "\tWidth: " << msg->width << std::endl;
-    /*
-    pcl::PCLPointCloud2* cloud = new pcl::PCLPointCloud2;
-    pcl::PCLPointCloud2ConstPtr cloudPtr(cloud);
-    pcl::PCLPointCloud2::Ptr cloud_filtered(new pcl::PCLPointCloud2);
-    pcl::PCLPointCloud2::Ptr cloud_pass(new pcl::PCLPointCloud2);
+void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZHSV>::ConstPtr& input_cloud) {
 
-    pcl_conversions::toPCL(*msg, *cloud);
-    */
-    //pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_tmp(new pcl::PointCloud<pcl::PointXYZRGB>);
-    //pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_tmp2(new pcl::PointCloud<pcl::PointXYZRGB>);
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_filtered(new pcl::PointCloud<pcl::PointXYZRGB>);
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_final(new pcl::PointCloud<pcl::PointXYZRGB>);
-
-    //pcl::fromROSMsg(*msg, *cloud_tmp2);
-    /*
-    pcl::VoxelGrid<pcl::PointXYZRGB> sor;
-    sor.setInputCloud(msg);
-    sor.setLeafSize(0.01, 0.01, 0.01);
-    sor.filter(*cloud_tmp);
-    */
-    //Eigen::Affine3f transform = Eigen::Affine3f::Identity();
-
-    //(0.115, 0.0, 0.202),
-    //        tf.transformations.quaternion_from_euler(0.0, 30.0 * pi / 180.0, 0.0),
-
-    //const Eigen::Vector3f translation(0.0, -0.202, 0.115);
+    // Filtering input scan to increase speed of registration.
+    pcl::PointCloud<pcl::PointXYZHSV>::Ptr filtered_cloud (new pcl::PointCloud<pcl::PointXYZHSV>);
+    pcl::ApproximateVoxelGrid<pcl::PointXYZHSV> approximate_voxel_filter;
+    approximate_voxel_filter.setLeafSize (0.2, 0.2, 0.2);
+    approximate_voxel_filter.setInputCloud (input_cloud);
+    approximate_voxel_filter.filter (*filtered_cloud);
 
 
+    pcl::PointCloud<pcl::PointXYZHSV>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZHSV>);
+    pcl::PointCloud<pcl::PointXYZHSV>::Ptr cloud_filtered(new pcl::PointCloud<pcl::PointXYZHSV>);
+    pcl::PointCloud<pcl::PointXYZHSV>::Ptr cloud_final(new pcl::PointCloud<pcl::PointXYZHSV>);
+
+
+    // Transform
     const Eigen::Vector3f translation(0.0, -0.152, 0.115);
 
     double yaw = 0.0;
@@ -107,90 +94,57 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& msg) 
 
     Eigen::Quaternionf rotation(w, x, y, z);
 
-    pcl::transformPointCloud(*msg, *cloud, translation, rotation);
+    pcl::transformPointCloud(*filtered_cloud, *cloud, translation, rotation);
 
-    // GREEN
-    /*
-    int rMax = 120;
-    int rMin = 0;
-    int gMax = 255;
-    int gMin = 100;
-    int bMax = 70;
-    int bMin = 0;
-    */
-    // RED
-    int rMax = 255;
-    int rMin = 80;
-    int gMax = 40;
-    int gMin = 0;
-    int bMax = 40;
-    int bMin = 0;
 
-    // PURPLE
-    /*
-    int rMax = 160;
-    int rMin = 80;
-    int gMax = 130;
-    int gMin = 60;
-    int bMax = 180;
-    int bMin = 120;
-    */
-    // BLUE
-    /*
-    int rMax = 50;
-    int rMin = 0;
-    int gMax = 150;
-    int gMin = 60;
-    int bMax = 255;
-    int bMin = 90;
-    */
-    pcl::ConditionAnd<pcl::PointXYZRGB>::Ptr color_cond (new pcl::ConditionAnd<pcl::PointXYZRGB> ());
-      color_cond->addComparison (pcl::PackedRGBComparison<pcl::PointXYZRGB>::Ptr (new pcl::PackedRGBComparison<pcl::PointXYZRGB> ("r", pcl::ComparisonOps::LT, rMax)));
-      color_cond->addComparison (pcl::PackedRGBComparison<pcl::PointXYZRGB>::Ptr (new pcl::PackedRGBComparison<pcl::PointXYZRGB> ("r", pcl::ComparisonOps::GT, rMin)));
-      color_cond->addComparison (pcl::PackedRGBComparison<pcl::PointXYZRGB>::Ptr (new pcl::PackedRGBComparison<pcl::PointXYZRGB> ("g", pcl::ComparisonOps::LT, gMax)));
-      color_cond->addComparison (pcl::PackedRGBComparison<pcl::PointXYZRGB>::Ptr (new pcl::PackedRGBComparison<pcl::PointXYZRGB> ("g", pcl::ComparisonOps::GT, gMin)));
-      color_cond->addComparison (pcl::PackedRGBComparison<pcl::PointXYZRGB>::Ptr (new pcl::PackedRGBComparison<pcl::PointXYZRGB> ("b", pcl::ComparisonOps::LT, bMax)));
-      color_cond->addComparison (pcl::PackedRGBComparison<pcl::PointXYZRGB>::Ptr (new pcl::PackedRGBComparison<pcl::PointXYZRGB> ("b", pcl::ComparisonOps::GT, bMin)));
+    // Filter on color
+    // Red
+    int iLowH = 1;      // 0
+    int iHighH = 10;    // 179
 
-    pcl::ConditionalRemoval<pcl::PointXYZRGB> condrem(color_cond);
+    int iLowS = 138;    // 0
+    int iHighS = 255;   // 255
+
+    int iLowV = 130;      // 0
+    int iHighV = 255;   // 255
+
+
+    pcl::ConditionAnd<pcl::PointXYZHSV>::Ptr color_cond (new pcl::ConditionAnd<pcl::PointXYZHSV> ());
+      color_cond->addComparison (pcl::PackedRGBComparison<pcl::PointXYZHSV>::Ptr (new pcl::PackedRGBComparison<pcl::PointXYZHSV> ("h", pcl::ComparisonOps::LT, iHighH)));
+      color_cond->addComparison (pcl::PackedRGBComparison<pcl::PointXYZHSV>::Ptr (new pcl::PackedRGBComparison<pcl::PointXYZHSV> ("h", pcl::ComparisonOps::GT, iLowH)));
+      color_cond->addComparison (pcl::PackedRGBComparison<pcl::PointXYZHSV>::Ptr (new pcl::PackedRGBComparison<pcl::PointXYZHSV> ("s", pcl::ComparisonOps::LT, iHighS)));
+      color_cond->addComparison (pcl::PackedRGBComparison<pcl::PointXYZHSV>::Ptr (new pcl::PackedRGBComparison<pcl::PointXYZHSV> ("s", pcl::ComparisonOps::GT, iLowS)));
+      color_cond->addComparison (pcl::PackedRGBComparison<pcl::PointXYZHSV>::Ptr (new pcl::PackedRGBComparison<pcl::PointXYZHSV> ("v", pcl::ComparisonOps::LT, iHighV)));
+      color_cond->addComparison (pcl::PackedRGBComparison<pcl::PointXYZHSV>::Ptr (new pcl::PackedRGBComparison<pcl::PointXYZHSV> ("v", pcl::ComparisonOps::GT, iLowV)));
+
+    pcl::ConditionalRemoval<pcl::PointXYZHSV> condrem(color_cond);
     condrem.setInputCloud(cloud);
     condrem.setKeepOrganized(true);
 
     condrem.filter(*cloud_filtered);
 
-    pcl::PointXYZRGB min_p, max_p;
+
+    // Filter so only top remains
+
+    pcl::PointXYZHSV min_p, max_p;
 
     pcl::getMinMax3D(*cloud_filtered, min_p, max_p);
 
     //std::cout << "Min: x=" << min_p.x << " y=" << min_p.y << " z=" << min_p.z << std::endl << "Max: x" << max_p.x << " y=" << max_p.y << " z=" << max_p.z << std::endl;
 
 
-    pcl::PassThrough<pcl::PointXYZRGB> pass;
+    pcl::PassThrough<pcl::PointXYZHSV> pass;
     pass.setInputCloud (cloud_filtered);
     pass.setFilterFieldName ("y");
     pass.setFilterLimits (min_p.y - 0.015, min_p.y + 0.015);
     pass.filter(*cloud_final);
 
-    /*
-    pcl::PassThrough<pcl::PCLPointCloud2> pass;
-    pass.setInputCloud(cloudPtr);
-    pass.setFilterFieldName("r");
-    pass.setFilterLimits(0.0, 10);
-    pass.filter(*cloud_pass);
-
-    pcl::VoxelGrid<pcl::PCLPointCloud2> sor;
-    sor.setInputCloud(cloud_pass);
-    sor.setLeafSize(0.002, 0.002, 0.002);
-    sor.filter(*cloud_filtered);
-
-
-    pcl_conversions::fromPCL(*cloud_filtered, output);
-    */
-
     sensor_msgs::PointCloud2 output;
 
     pcl::toROSMsg(*cloud_filtered, output);
 
+
+    // Calculate optimal pick up position
     // PCL -> RIKTIG
     // z = x
     // x = y
@@ -200,7 +154,7 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& msg) 
     double height = 0.0;
 
     double numPoints = 0.0;
-    for (pcl::PointCloud<pcl::PointXYZRGB>::iterator point = cloud_final->points.begin(); point < cloud_final->points.end(); point++) {
+    for (pcl::PointCloud<pcl::PointXYZHSV>::iterator point = cloud_final->points.begin(); point < cloud_final->points.end(); point++) {
         numPoints++;
 
         forward += point->z;
@@ -220,6 +174,18 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& msg) 
     object_pub.publish(point);
 
 }
+
+
+
+
+
+
+
+
+
+
+
+
 
 cv::Mat imgThresholded;
 double x = -1;
