@@ -6,6 +6,7 @@
 #include <ros/ros.h>
 #include <geometry_msgs/Point32.h>
 #include <tf/transform_datatypes.h>
+#include <tf/transform_broadcaster.h>
 #include <sensor_msgs/PointCloud.h>
 #include <sensor_msgs/LaserScan.h>
 #include <geometry_msgs/Twist.h>
@@ -74,8 +75,11 @@ void Localization::publish_pose_estimate() {
     pose.pose.position.x = particle_filter->mean_estimate_x();
     pose.pose.position.y = particle_filter->mean_estimate_y();
     float theta_estimate = particle_filter->mean_estimate_theta();
-    pose.pose.orientation.x = cos(theta_estimate / 2);
-    pose.pose.orientation.y = sin(theta_estimate / 2);
+
+    tf::Quaternion q;
+    q.setRPY(0, 0, theta_estimate);
+    tf::quaternionTFToMsg(q, pose.pose.orientation);
+
     position_publisher.publish(pose);
 
     sensor_msgs::PointCloud pcl;
