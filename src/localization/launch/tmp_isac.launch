@@ -1,0 +1,12 @@
+<launch>
+
+    <rosparam>
+        use_sim_time: true
+    </rosparam>
+
+	<node name="laser_broadcaster" pkg="localization" type="laser_broadcaster.py" />
+	<node name="robot_broadcaster" pkg="localization" type="robot_broadcaster.py" />
+	<node name="ras_maze_map" pkg="ras_maze_map" type="ras_maze_map_node" args="_map_file:=$(env MAP_PATH)"/>
+	<node name="rviz" pkg="rviz" type="rviz"/>
+
+</launch>
