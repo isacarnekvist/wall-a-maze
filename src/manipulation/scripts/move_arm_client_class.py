@@ -3,6 +3,7 @@
 import sys
 import rospy
 import tf
+import numpy as np
 
 from uarm.srv import *
 from geometry_msgs.msg import Point, PointStamped
@@ -25,19 +26,29 @@ class Manipulation():
 		rospy.wait_for_service('/uarm/move_to')
 		self.moveTo_service = rospy.ServiceProxy('/uarm/move_to', MoveTo)
 	
-		self.goalPosStamped = Point()
+		self.goalPosStamped = PointStamped()
+		self.goalPosStamped.header.frame_id = 'None'
 	
 		# Define move parameters 
 		self.move_mode = 0	# (0 absolute,1 realtive)
-		self.movement_duration = rospy.Duration(1.0) # (in s)
-	
-		self.interpolation_type = 2 # 2 = linear interpolation
+		self.moveDuration_abs = rospy.Duration(2.0) # (in s)
+		self.moveDuration_rel = rospy.Duration(0.2)
+		
+		self.interpol_none = 0
+		self.interpol_cubic = 1
+		self.interpol_linear = 2
 		self.check_limits = True
 		self.eef_orientation = 0
 		self.ignore_orientation = True
+		
+		self.absTol = 0.5	# 5mm absolute tolerance
 
-		self.moveSteps()
-
+		rate = rospy.Rate(10) #10hz
+	
+		while not rospy.is_shutdown():
+			self.moveSteps()
+			rate.sleep
+			
 		rospy.spin()
 	
 	
@@ -45,12 +56,11 @@ class Manipulation():
 	def goal_callback(self, data):
 		self.goalPosStamped = self.transform_wheelToArm(data)
 	
-		print("Point before scaling:",self.goalPosStamed.point)
 		scale = 100.0 # meter to cm
-		self.goalPosStamped.point.x = self.goalPosStamped.point.x*scale	# CHECK IF THIS WORKS
+		self.goalPosStamped.point.x = self.goalPosStamped.point.x*scale	
 		self.goalPosStamped.point.y = self.goalPosStamped.point.y*scale
 		self.goalPosStamped.point.z = self.goalPosStamped.point.z*scale
-		print("Point after scaling:",self.goalPosStamed.point)
+
 		
 
 	def transform_wheelToArm(self, data):
@@ -64,71 +74,106 @@ class Manipulation():
 
 
 
-	def moveToPos_client(self, position):
+	def moveToPos_client(self, position, move_mode, move_duration, int_type):
 		try:
-			response = self.moveTo_service(position, self.eef_orientation, self.move_mode, self.movement_duration, self.ignore_orientation, self.interpolation_type, self.check_limits)
+			response = self.moveTo_service(position, self.eef_orientation, move_mode, move_duration, self.ignore_orientation, int_type, self.check_limits)
 			return response
 		except rospy.ServiceException, e:
 			print "Service call failed: %s"%e
-			
 	
-	def moveSteps(self):
-		# Resting position
-		initPos_arm = Point(2.3,11.8,12.6)	# in arm frame
+	
+	
+	def moveToPos_control(self, position):
+		old_position = Point()
 		
+		# Move absolute first time
+		move_mode = 0
+		firstMove_state = self.moveToPos_client(position, move_mode , self.moveDuration_abs, self.interpol_linear)
+		
+		offset_x = position.x-firstMove_state.position.x
+		offset_y = position.y-firstMove_state.position.y
+		offset_z = position.z-firstMove_state.position.z
+		old_position = firstMove_state.position
+		
+		
+		
+		# Move relative until offset in x,y,z smaller than tolAbs
+		while abs(offset_x) > self.absTol or abs(offset_y) > self.absTol or abs(offset_z) > self.absTol:
+			move_mode = 1
+			move_steps = 1.0 # number of movement steps to eliminate offset
+			
+			idx = np.argmax([abs(offset_x), abs(offset_y), abs(offset_z)])
+			print "Offsets (x,y,z) are {}, {}, {}".format(offset_x,offset_y,offset_z)
+			print ""	
+			print "Maximum offset is {}".format(idx)	
+			
+			if idx == 0:
+				moveX = Point(offset_x/move_steps,0.0,0.0)
+				state = self.moveToPos_client(moveX, move_mode, self.moveDuration_rel, self.interpol_none)
+				old_position = state.position
+				offset_x = position.x - old_position.x 
+				print "corrected x to {}".format(offset_x)
+			elif idx == 1:
+				moveY = Point(0.0,offset_y/move_steps,0.0)
+				state = self.moveToPos_client(moveY, move_mode, self.moveDuration_rel, self.interpol_none)
+				old_position = state.position
+				offset_y = position.y - old_position.y
+				print "corrected y to {}".format(offset_y)
+			elif idx == 2:
+				moveZ = Point(0.0,0.0,offset_z/move_steps)
+				state = self.moveToPos_client(moveZ, move_mode, self.moveDuration_rel, self.interpol_none)
+				old_position = state.position
+				offset_z = position.z - old_position.z	 
+				print "corrected z to {}".format(offset_z)
+				
+		print "Final control position is {}".format(old_position.position)		
+				
+				
+				
+	def moveSteps(self):
 	
-		initial_state = self.moveToPos_client(initPos_arm) # currently to initPos_wheel
-		print("In resting position",initial_state)
+		scale = 100.0 # meter to cm
+		
+		# To Resting position
+		initPos_arm = Point(1.0, 12.0, 14.0)	# in arm frame	
+		initial_state = self.moveToPos_client(initPos_arm, self.move_mode, self.moveDuration_abs, self.interpol_linear) 
+		print("Moved to resting position",initial_state)
 		rospy.sleep(2.0)
 		
-
 		
-		
-		testPos_Stamped = PointStamped()
-		testPos_Stamped.header.frame_id = 'wheel_center'
-		testPos_Stamped.point = Point(0.10,0.00,0.25)
-		scale = 100.0 # meter to cm
-		testPos_Stamped.point.x = testPos_Stamped.point.x*scale
-		testPos_Stamped.point.y = testPos_Stamped.point.y*scale
-		testPos_Stamped.point.z = testPos_Stamped.point.z*scale
-		
-		
-		testPos_uarm = self.transform_wheelToArm(testPos_Stamped)
-		
-		print("Sending arm to position ... wrt armframe" , testPos_uarm)
-		test_state = self.moveToPos_client(testPos_uarm.point)
-		print("Arm is at", test_state)
-		
-		sys.exit()
-		#if goal_pos is None:
-			#rate.sleep()
-			#continue
+		# To ABOVEGOAL position
+		if self.goalPosStamped.header.frame_id is 'None':
+			print ""
+			print "No goal position provided"
+			print ""
+			return
 		
 		goal_pos_cur = self.goalPosStamped.point
-
-		# Position above goal
-		aboveGoal_pos = Point(goal_pos_cur.x, goal_pos_cur.y, initPos_arm.z)
-		#print("Goal position is ", aboveGoal_pos)
-			
+		aboveGoal_pos = Point(goal_pos_cur.x, goal_pos_cur.y, initPos_arm.z)			
 	
-		# Move above goal
-		aboveGoal_state = self.moveToPos_client(aboveGoal_pos)
-		print("Above goal", aboveGoal_state)
+		aboveGoal_state = self.moveToPos_client(aboveGoal_pos, self.move_mode, self.moveDuration_abs, self.interpol_linear)
+		print("Moved above goal", aboveGoal_state)
 		rospy.sleep(2.0)
 		#input("continue")
 	
+		# To ABOVEGOAL CLOSER position
+	
+		aboveGoalClose_pos = Point(goal_pos_cur.x, goal_pos_cur.y, goal_pos_cur.z+2.0)			
 
-		# Move down
-		atGoal_state = self.moveToPos_client(goal_pos_cur)
-		print("On target", atGoalstate)
+		aboveGoalClose_state = self.moveToPos_control(aboveGoalClose_pos)
+		print("Moved close above goal", aboveGoalClose_state)
 		rospy.sleep(2.0)
 
-		# Move back to initial
-		aboveGoal_state = self.moveToPos_clientt(aboveGoal_pos)
+		# Move down
+		print "Sending eef to target {}".format(goal_pos_cur)
+		atGoal_state = self.moveToPos_control(goal_pos_cur)
+		print("Moved to target", atGoal_state)
+		rospy.sleep(2.0)
+
+		# Move back to initial in two steps
+		aboveGoal_state = self.moveToPos_client(aboveGoal_posself.move_mode, self.moveDuration_abs, self.interpol_linear)
+		initial_state = self.moveToPos_client(initPos_armself.move_mode, self.moveDuration_abs, self.interpol_linear)
 		print "Back in initial position"
-
-		initial_state = self.moveToPos_client(initPos_arm)
-
 	
 
 

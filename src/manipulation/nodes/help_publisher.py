@@ -13,7 +13,7 @@ def talker():
 	header = Header()
 	header.frame_id = 'wheel_center'
 	
-	point = Point(0.20,0.01,0.05) # in m
+	point = Point(0.20,0.00,0.04) # in m
 	
 	pointStamped = PointStamped(header,point)
 	
