@@ -2,6 +2,7 @@
 #include <ros/ros.h>
 #include "sensor_msgs/PointCloud2.h"
 #include <pcl_ros/point_cloud.h>
+#include "std_msgs/String.h"
 
 #include "perception/Object.h"
 
@@ -39,6 +40,7 @@ std::vector<std::string> colorNames;
 
 ros::Publisher pub;
 ros::Publisher object_pub;
+ros::Publisher espeak_pub;
 
 void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input_cloud) {
     colors.push_back(red);
@@ -89,6 +91,7 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
     std::vector<int> indices;
     pcl::removeNaNFromPointCloud(*filtered_cloud, *filtered_cloud, indices);
 
+    // Find the color objects
     for (int i = 0; i < colors.size(); i++) {
         pcl::PointCloud<pcl::PointXYZRGB>::Ptr color_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
 
@@ -103,9 +106,12 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
         // Remove outliers
         PointCloudHelper::removeOutliers(color_cloud, color_cloud);
 
+        // Check if cloud is empty
+        if (color_cloud->points.size() == 0) {
+            continue;
+        }
 
         // Seperate (Segmatation)
-        // TODO: Check if empty!
         std::vector<pcl::PointIndices> cluster_indices = PointCloudHelper::segmentation(color_cloud);
         std::cout << cluster_indices.size() << std::endl;
 
@@ -124,9 +130,7 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
             std::cout << color_cloud->points.size() << ", " << cluster_cloud->points.size() << std::endl;
 
             // Classify
-
-            // Find other obstacles
-            // Booby trap
+            std::string objectType = PointCloudHelper::classify(cluster_cloud, colorNames[i]);
 
             // Filter so only top remains
             perception::Object object = PointCloudHelper::getOptimalPickupPoint(cluster_cloud);
@@ -142,19 +146,28 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
             pub.publish(output);
 
             object_pub.publish(object);
+
+            std_msgs::String phrase;
+            phrase.data = "I see a " + object.color + " " + objectType;
+
+            espeak_pub.publish(phrase);
         }
     }
+
+    // Find other obstacles
+    // Booby trap
 }
 
 int main(int argc, char **argv) {
   ros::init(argc, argv, "image_listener");
   ros::NodeHandle nh;
 
-  ros::Subscriber point_sub = nh.subscribe("camera/depth_registered/points", 1000, pointCloudCallback);
+  ros::Subscriber point_sub = nh.subscribe("camera/depth_registered/points", 1, pointCloudCallback);
 
-  pub = nh.advertise<sensor_msgs::PointCloud2> ("output", 1000);
+  pub = nh.advertise<sensor_msgs::PointCloud2> ("output", 1);
 
-  object_pub = nh.advertise<perception::Object> ("objectPos_wheelcenter", 1000);
+  object_pub = nh.advertise<perception::Object> ("objectPos_wheelcenter", 1);
+  espeak_pub = nh.advertise<std_msgs::String> ("espeak/string", 1);
 
   ros::spin();
 

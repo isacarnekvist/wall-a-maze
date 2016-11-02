@@ -1,5 +1,5 @@
 float64 x
 float64 y
 float64 z
-int32 type
+string type
 string color

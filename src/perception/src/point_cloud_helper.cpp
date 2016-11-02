@@ -118,4 +118,9 @@ namespace PointCloudHelper {
 
         return cluster_indices;
     }
+
+    std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
+        // TODO
+        return "thing";
+    }
 }
