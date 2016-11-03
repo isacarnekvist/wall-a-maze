@@ -37,11 +37,13 @@ if __name__ == '__main__':
 		testPoint_stamped.point = Point(trans[0],trans[1],trans[2])
 		testPoint_uarm = listener.transformPoint('uarm',testPoint_stamped)
 			
-		#print "Translation of EEF towards wheel base center is {}".format(trans)
+		print "Translation of EEF towards wheel base center is {}".format(trans)
 		#print "EEF transformed to wheel base is {}".format(eef_wheel.point)
+		'''
 		print " "
 		print "EEF_uarm = {}".format(trans_uarm)
 		print "testPoint_uarm = {}".format(testPoint_uarm.point)
+		'''
 		eef_point = Point(trans[0],trans[1],trans[2])
 		eef_header = Header(float('NaN'),float('NaN'),'wheel_center')	# how to add time and really necessary?
 		eef_pointstamped = PointStamped(eef_header, eef_point)
