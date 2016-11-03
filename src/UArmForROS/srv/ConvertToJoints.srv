@@ -1,0 +1,11 @@
+# Request
+geometry_msgs/Point position # Desired movement position
+float32 eef_orientation # desired orientation
+bool check_limits # Whether to check for joint limits or not
+
+---
+# Response
+float32 j0
+float32 j1
+float32 j2
+float32 j3
