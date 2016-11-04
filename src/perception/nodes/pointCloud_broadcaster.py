@@ -15,8 +15,8 @@ def robot_to_pointCloud(cloud):
         # X is how much the laser is translated forwards
         #(0.115, 0.0, 0.202),
         #tf.transformations.quaternion_from_euler(0.0, 30.0 * pi / 180.0, 0.0),
-        (0.10, 0.01, 0.17),
-        tf.transformations.quaternion_from_euler(0.0, 45.0 * pi / 180.0, -3.0 * pi / 180.0),
+        (0.00, 0.00, 0.00),
+        tf.transformations.quaternion_from_euler(0.0, 0.0, 0.0),
         rospy.Time.now(),
         "camera_link",
         "wheel_center"
