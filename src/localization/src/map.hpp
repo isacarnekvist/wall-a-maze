@@ -11,8 +11,8 @@ class Map {
 public:
     Map();
     float distance(float x, float y, float angle) const;
-private:
     std::vector<Wall> walls;
+private:
     void readWalls();
 };
 
