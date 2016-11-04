@@ -4,11 +4,13 @@
 #include <algorithm>
 
 #include <ros/ros.h>
+#include <geometry_msgs/Twist.h>
 #include <geometry_msgs/Point32.h>
 #include <tf/transform_datatypes.h>
 #include <sensor_msgs/PointCloud.h>
 #include <sensor_msgs/LaserScan.h>
-#include <geometry_msgs/Twist.h>
+#include <geometry_msgs/Point32.h>
+#include <geometry_msgs/Polygon.h>
 #include <geometry_msgs/PoseStamped.h>
 
 #include "map.hpp"
@@ -25,10 +27,12 @@ public:
     void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg);
     void odometry_callback(const geometry_msgs::Twist::ConstPtr &msg);
     void publish_pose_estimate();
+    void publish_updated_obstacles();
 private:
     vector<tuple<float, float> > scans;
     ros::Publisher position_publisher;
     ros::Publisher particle_publisher;
+    ros::Publisher obstacle_publisher;
     Map map;
     ParticleFilter *particle_filter; /* Doesn't work without '*' and new */
     bool recieved_laser;
@@ -41,6 +45,7 @@ Localization::Localization(ros::NodeHandle &node_handle) {
     recieved_odometry = false;
     position_publisher = node_handle.advertise<geometry_msgs::PoseStamped>("/position", 10);
     particle_publisher = node_handle.advertise<sensor_msgs::PointCloud>("/particles", 10);
+    obstacle_publisher = node_handle.advertise<geometry_msgs::Polygon>("/obstacles", 1000);
     map = Map();
     particle_filter = new ParticleFilter(
         /* TODO Change these to be set from the map */
@@ -93,6 +98,25 @@ void Localization::publish_pose_estimate() {
     particle_publisher.publish(pcl);
 }
 
+void Localization::publish_updated_obstacles() {
+    geometry_msgs::Polygon res;
+    geometry_msgs::Point32 p1;
+    for (Wall w : map.walls) {
+        cout << w.x1 << endl;
+        geometry_msgs::Point32 p1;
+        p1.x = w.x1;
+        p1.y = w.y1;
+        p1.z = 0;
+        geometry_msgs::Point32 p2;
+        p2.x = w.x2;
+        p2.y = w.y2;
+        p2.z = 0;
+        res.points.push_back(p1);
+        res.points.push_back(p2);
+    }
+    obstacle_publisher.publish(res);
+}
+
 void Localization::odometry_callback(const geometry_msgs::Twist::ConstPtr &msg) {
     float time_delta = 0.0;
     if (recieved_odometry) {
@@ -136,11 +160,16 @@ int main(int argc, char **argv) {
         &localization
     );
 
+    bool temp_updated_map = false;
     ros::Rate rate (10);
     while (ros::ok()) {
         ros::spinOnce();
         rate.sleep();
         localization.publish_pose_estimate();
+        if (!temp_updated_map) {
+            localization.publish_updated_obstacles(); /* Move this so that it publishes when updated! */
+            temp_updated_map = true;
+        }
     }
 
     return 0;
