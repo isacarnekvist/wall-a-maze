@@ -171,7 +171,7 @@ class Manipulation():
 		#atGoal_state = self.moveToPos_control(goalPos)
 		
 		# Modify goal pos to go to lower z
-		goalPos.z = goalPos.z-1.0
+		goalPos.z = goalPos.z-2.0
 		atGoal_state = self.moveToPos_client(goalPos,self.move_mode, self.moveDuration_abs, self.interpol_linear)
 		
 		#print("Moved to target", atGoal_state)
