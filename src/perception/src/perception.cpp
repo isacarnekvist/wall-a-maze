@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <vector>
+#include <map>
 
 // PCL General
 #include <pcl/point_cloud.h>
@@ -27,22 +28,55 @@
 #include "point_cloud_helper.h"
 #include "hsv_color.h"
 
+#include "geometry_msgs/Point.h"
+
 #define PI           3.14159265358979323846  /* pi */
 
-
+/*
 hsvColor red = {1, 15, 0.5, 1, 0, 1};
-hsvColor blue = {100, 200, 0, 1, 0, 1};
-hsvColor green = {60, 95, 0, 1, 0, 1};
-hsvColor purple = {250, 360, 0, 1, 0, 1};
-
+hsvColor blue = {100, 200, 0.5, 1, 0, 1};
+hsvColor green = {60, 95, 0.5, 1, 0, 1};
+hsvColor purple = {250, 360, 0.5, 1, 0, 1};
+*/
 std::vector<hsvColor> colors; //{red, blue, green, purple};
 std::vector<std::string> colorNames;
 
 ros::Publisher pub;
 ros::Publisher object_pub;
-ros::Publisher espeak_pub;
+ros::Publisher point_pub;
+//ros::Publisher espeak_pub;
+
+double transform_x;
+double transform_y;
+double transform_z;
+double transform_yaw;
+double transform_roll;
+double transform_pitch;
+
+void initParams(ros::NodeHandle n) {
+    n.getParam("/translation/x", transform_x);
+    n.getParam("/translation/y", transform_y);
+    n.getParam("/translation/z", transform_z);
+    n.getParam("/rotation/yaw", transform_yaw);
+    n.getParam("/rotation/roll", transform_roll);
+    n.getParam("/rotation/pitch", transform_pitch);
+
+    n.getParam("/color_names", colorNames);
+
+    for (int i = 0; i < colorNames.size(); i++) {
+        std::map<std::string, double> color_hsv;
+
+        n.getParam("/" + colorNames[i] + "_hsv", color_hsv);
+
+        hsvColor color = { color_hsv["h_min"], color_hsv["h_max"], color_hsv["s_min"], color_hsv["s_max"], color_hsv["v_min"], color_hsv["v_max"] };
+
+        colors.push_back(color);
+    }
+
+}
 
 void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input_cloud) {
+    /*
     colors.push_back(red);
     colors.push_back(blue);
     colors.push_back(green);
@@ -52,7 +86,7 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
     colorNames.push_back("blue");
     colorNames.push_back("green");
     colorNames.push_back("purple");
-
+    */
     // Filtering input scan to increase speed of registration.
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr filtered_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::ApproximateVoxelGrid<pcl::PointXYZRGB> approximate_voxel_filter;
@@ -61,12 +95,13 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
     approximate_voxel_filter.filter (*filtered_cloud);
 
     // Transform
-    const Eigen::Vector3f translation(0.0, -0.152, 0.115);
+    const Eigen::Vector3f translation(transform_y, -transform_z, transform_x);
 
-    double yaw = 0.0;
+    double yaw = transform_yaw;
     //double roll = -30.0 * PI / 180.0;
-    double roll = -42.0 * PI / 180.0;
-    double pitch = 0.0;
+    //double roll = -42.0 * PI / 180.0;
+    double roll = -transform_roll * PI / 180.0;
+    double pitch = transform_pitch;
 
     double t0 = std::cos(yaw * 0.5f);
     double t1 = std::sin(yaw * 0.5f);
@@ -97,7 +132,7 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
 
         *color_cloud = *filtered_cloud;
 
-        std::cout << color_cloud->points.size() << ", " << filtered_cloud->points.size() << std::endl;
+        //std::cout << color_cloud->points.size() << ", " << filtered_cloud->points.size() << std::endl;
 
         // Filter on color
         PointCloudHelper::HSVFilter(color_cloud, color_cloud, colors[i]);
@@ -113,7 +148,7 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
 
         // Seperate (Segmatation)
         std::vector<pcl::PointIndices> cluster_indices = PointCloudHelper::segmentation(color_cloud);
-        std::cout << cluster_indices.size() << std::endl;
+        //std::cout << cluster_indices.size() << std::endl;
 
 
         for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin(); it != cluster_indices.end(); it++) {
@@ -127,7 +162,7 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
             cluster_cloud->header = color_cloud->header; // Will fuck up RVIZ if not here!
 
 
-            std::cout << color_cloud->points.size() << ", " << cluster_cloud->points.size() << std::endl;
+            //std::cout << color_cloud->points.size() << ", " << cluster_cloud->points.size() << std::endl;
 
             // Classify
             std::string objectType = PointCloudHelper::classify(cluster_cloud, colorNames[i]);
@@ -145,12 +180,18 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
 
             pub.publish(output);
 
+            geometry_msgs::Point point;
+            point.x = object.x;
+            point.y = object.y;
+            point.z = object.z;
+
             object_pub.publish(object);
+            point_pub.publish(point);
 
             std_msgs::String phrase;
             phrase.data = "I see a " + object.color + " " + objectType;
 
-            espeak_pub.publish(phrase);
+            //espeak_pub.publish(phrase);
         }
     }
 
@@ -158,18 +199,21 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
     // Booby trap
 }
 
+
 int main(int argc, char **argv) {
-  ros::init(argc, argv, "image_listener");
-  ros::NodeHandle nh;
+    ros::init(argc, argv, "image_listener");
+    ros::NodeHandle nh;
 
-  ros::Subscriber point_sub = nh.subscribe("camera/depth_registered/points", 1, pointCloudCallback);
+    initParams(nh);
 
-  pub = nh.advertise<sensor_msgs::PointCloud2> ("output", 1);
+    ros::Subscriber point_sub = nh.subscribe("camera/depth_registered/points", 1, pointCloudCallback);
 
-  object_pub = nh.advertise<perception::Object> ("objectPos_wheelcenter", 1);
-  espeak_pub = nh.advertise<std_msgs::String> ("espeak/string", 1);
+    pub = nh.advertise<sensor_msgs::PointCloud2> ("output", 1);
 
-  ros::spin();
+    object_pub = nh.advertise<perception::Object> ("objectPos_wheelcenter2", 1);
+    point_pub = nh.advertise<geometry_msgs::Point> ("objectPos_wheelcenter", 1);
+    //espeak_pub = nh.advertise<std_msgs::String> ("espeak/string", 1);
 
-
+    ros::spin();
 }
+
