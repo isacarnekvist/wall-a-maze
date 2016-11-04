@@ -28,7 +28,7 @@
 #include "point_cloud_helper.h"
 #include "hsv_color.h"
 
-#include "geometry_msgs/Point.h"
+#include "geometry_msgs/PointStamped.h"
 
 #define PI           3.14159265358979323846  /* pi */
 
@@ -180,10 +180,12 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
 
             pub.publish(output);
 
-            geometry_msgs::Point point;
-            point.x = object.x;
-            point.y = object.y;
-            point.z = object.z;
+            geometry_msgs::PointStamped point;
+            point.point.x = object.x;
+            point.point.y = object.y;
+            point.point.z = object.z;
+            point.header.frame_id = "wheel_center";
+            point.header.stamp = ros::Time();
 
             object_pub.publish(object);
             point_pub.publish(point);
@@ -211,7 +213,7 @@ int main(int argc, char **argv) {
     pub = nh.advertise<sensor_msgs::PointCloud2> ("output", 1);
 
     object_pub = nh.advertise<perception::Object> ("objectPos_wheelcenter2", 1);
-    point_pub = nh.advertise<geometry_msgs::Point> ("objectPos_wheelcenter", 1);
+    point_pub = nh.advertise<geometry_msgs::PointStamped> ("objectPos_wheelcenter", 1);
     //espeak_pub = nh.advertise<std_msgs::String> ("espeak/string", 1);
 
     ros::spin();
