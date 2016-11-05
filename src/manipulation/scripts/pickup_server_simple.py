@@ -20,25 +20,21 @@ class PickUpAction(object):
 	
 	def __init__(self, name):
 		self._action_name = name
-		self._goal = PointStamped()
 		self._as = actionlib.SimpleActionServer(self._action_name, manipulation.msg.PickUpObjectAction, execute_cb=self.execute_cb, auto_start = False)
 		self._as.start()
 		
 	
 	
 	def execute_cb(self, goal):
-		self._goal = goal
-		Manipulation()
+		Manipulation(goal.pickup_position)
 		
 	
-class Manipulation(PickUpAction):
+class Manipulation(object):
 
-	def __init__(self):	
+	def __init__(self, arg):	
 		#rospy.Subscriber('/objectPos_wheelcenter', PointStamped, self.goal_callback)
-	
-		PickUpAction.__init__(self, rospy.get_name())
+		self.goal = arg
 		
-		print self._action_name
 		
 		# Wait for transform
 		self.listener = tf.TransformListener()
@@ -52,7 +48,7 @@ class Manipulation(PickUpAction):
 		self.pump_service = rospy.ServiceProxy('/uarm/pump',Pump)
 		
 		# Calculate goalPosition for action goal
-		self.goalPosStamped = self.transform_wheelToArm(self._goal)
+		self.goalPosStamped = self.transform_wheelToArm(self.goal)
 	
 		# Define move parameters 
 		self.move_mode = 0	# (0 absolute,1 realtive)
@@ -77,7 +73,7 @@ class Manipulation(PickUpAction):
 		# Move
 		self.moveSteps()
 		
-		self._result.finished = True
+		#self._result.finished = True
 		
 	
 	# Not needed here
@@ -204,8 +200,8 @@ class Manipulation(PickUpAction):
 		rospy.sleep(2.0)
 		
 		# Give action feedback if any of two positions out of Range
-		if aboveGoal_state.error == True or atGaol_state.error == True:
-			self._feedback.outOfRange = True
+		#if aboveGoal_state.error == True or atGaol_state.error == True:
+		#	self._feedback.outOfRange = True
 		
 		return atGoal_state
 		
