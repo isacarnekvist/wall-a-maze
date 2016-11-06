@@ -1,0 +1,9 @@
+# This can be anywhere in the maze and the planner will find a way there
+# Goal
+float32 x
+float32 y
+float32 theta
+---
+# Ignore results
+---
+# Ignore feedback
