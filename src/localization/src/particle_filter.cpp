@@ -21,8 +21,8 @@ normal_distribution<float> normal_sampler (0, 1);
 
 void Particle::move(float linear, float angular, float delta_seconds) {
     /* Here are parameters that probably will need tuning! */
-    float k_linear  = (0.05 * abs(linear) + 0.6 * abs(angular) + 0.3);
-    float k_angular = (0.05 * abs(linear) + 1.0 * abs(angular) + 0.5);
+    float k_linear  = (0.02 * abs(linear) + 0.3 * abs(angular) + 0.1);
+    float k_angular = (0.03 * abs(linear) + 0.6 * abs(angular) + 0.3);
 
     /* Update with noise! */
     theta += (angular + k_angular * normal_sampler(random_engine)) * delta_seconds;
@@ -69,7 +69,7 @@ float Particle::likelihood(const Map &map, const vector<tuple<float, float> > &s
     for (int i = 0; i < n_look_at; i++) {
         discrepancy_sum += discrepancies[i];
     }
-    return exp(- 4 * discrepancy_sum / n_look_at);
+    return exp(- 8 * discrepancy_sum / n_look_at);
 }
 
 void Particle::printParticle() {
@@ -97,7 +97,7 @@ void ParticleFilter::resample(const Map &map, const vector<tuple<float, float> >
     for (int i = 0; i < n_particles; i++) {
         probabilities[i] = particles[i].likelihood(map, scans);
     }
-    int n_noise_particles = 4;
+    int n_noise_particles = 2;
     vector<int> resample_counts = multinomial_sample(n_particles - n_noise_particles, probabilities);
     particles = vector<Particle>();
     for (int i = 0; i < n_particles; i++) {
