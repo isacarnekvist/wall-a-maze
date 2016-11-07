@@ -1,8 +1,0 @@
-<launch>
-	<!-- <rosparam file="$(find general)/config/general_params.yaml" command="load" /> -->
-	<rosparam file="$(find perception)/config/perception_params.yaml" command="load" />
-	<node pkg="perception" type="perception" name="perception" output="screen" />
-	<node pkg="perception" type="pointCloud_broadcaster.py" name="pointCloud_broadcaster" />
-	<!-- <node pkg="ras_espeak" type="espeak_node" name="espeak" /> -->
-		
-</launch>
