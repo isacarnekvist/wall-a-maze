@@ -1,0 +1,19 @@
+<package>
+  <name>perception</name>
+  <version>0.1.0</version>
+  <description>
+    Packages for the perception for the project in the RAS 2016 course.
+  </description>
+  <license>BSD</license>
+
+  <author email="dduberg@kth.se">Daniel Duberg</author>
+  <maintainer email="dduberg@kth.se">Daniel Duberg</maintainer>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <run_depend>std_msgs</run_depend>
+
+  <export>
+    <metapackage/>
+  </export>
+</package>

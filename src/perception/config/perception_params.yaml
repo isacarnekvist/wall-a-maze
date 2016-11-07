@@ -1,8 +1,0 @@
-translation: { x: 0.115, y: 0.0, z: 0.202 }
-rotation: { yaw: 0.0, roll: 30.0, pitch: 0.0 }
-
-color_names: [ 'red', 'blue', 'green', 'purple' ]
-red_hsv: { h_min: 1.0, h_max: 15.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
-blue_hsv: { h_min: 100.0, h_max: 200.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
-green_hsv: { h_min: 60.0, h_max: 95.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
-purple_hsv: { h_min: 250.0, h_max: 360.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 } 
