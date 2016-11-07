@@ -102,7 +102,6 @@ void Localization::publish_updated_obstacles() {
     geometry_msgs::Polygon res;
     geometry_msgs::Point32 p1;
     for (Wall w : map.walls) {
-        cout << w.x1 << endl;
         geometry_msgs::Point32 p1;
         p1.x = w.x1;
         p1.y = w.y1;
