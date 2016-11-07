@@ -49,7 +49,7 @@ class LineTargetServer:
 
         # Face the goal position
         self.correct_rotation(start_theta)
-        sleep(1.0) # let pf converge
+        sleep(0.5) # let pf converge
 
         # Move to the correct spot
         distance = np.sqrt((self.x - goal.x) ** 2 + (self.y - goal.y) ** 2)
@@ -58,10 +58,11 @@ class LineTargetServer:
             self.correct_position(goal.x, goal.y)
             distance = np.sqrt((self.x - goal.x) ** 2 + (self.y - goal.y) ** 2)
         self.wheels.publish(Twist()) # Stop
-        sleep(1.0) # let pf converge
+        sleep(0.5) # let pf converge
 
         # Rotate to final wanted rotation
-        self.correct_rotation(goal.theta)
+        if not goal.ignore_end_rotation:
+            self.correct_rotation(goal.theta)
 
         self.server.set_succeeded()
 
@@ -83,7 +84,7 @@ class LineTargetServer:
         self.wheels.publish(msg)
         sleep(time_needed * 0.9)
         self.wheels.publish(Twist()) # Stop
-        sleep(1.5)
+        sleep(0.5)
 
         # Converge and polish once
         msg = Twist()

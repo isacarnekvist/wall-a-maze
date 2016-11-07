@@ -36,6 +36,7 @@ class Planner:
             partial_goal.x = x
             partial_goal.y = y
             partial_goal.theta = 3.14
+            partial_goal.ignore_end_rotation = True
             self.line_client.send_goal(partial_goal)
             self.line_client.wait_for_result()
         self.server.set_succeeded()
