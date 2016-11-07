@@ -16,22 +16,27 @@ from planner.msg import TargetAction, TargetGoal, LineTargetAction, LineTargetGo
 class Planner:
 
     def __init__(self):
-        self.server = actionlib.SimpleActionServer('planner', TargetAction, self.execute, False)
+        self.server = actionlib.ActionServer('planner', TargetAction, self.execute, None, False)
         self.server.start()
         self.line_client = actionlib.SimpleActionClient('line_target', LineTargetAction)
         self.line_client.wait_for_server()
         self.grid = None
         self.graph = None
         self.x = 0.0
+        print('x was initialized:', self.x)
         self.y = 0.0
+        self.got_abort_request = False
         print('Started planner server')
 
-    def execute(self, goal):
+    def execute(self, goal_handle):
+        goal_handle.set_accepted()
+        goal = goal_handle.get_goal()
         if self.grid is None or self.graph is None:
             raise ValueError('Have not recieved occupancy grid!')
         print('Executing planner goal:')
         plan = euler_path_plan(self.x, self.y, goal.x, goal.y, self.grid, self.graph)
         for i in range(len(plan)):
+            print(goal_handle.get_goal_status())
             x, y = plan[i]
             partial_goal = LineTargetGoal()
             partial_goal.x = x
@@ -44,7 +49,7 @@ class Planner:
                 partial_goal.ignore_end_rotation = True
             self.line_client.send_goal(partial_goal)
             self.line_client.wait_for_result()
-        self.server.set_succeeded()
+        goal_handle.set_succeeded()
 
     def obstacles_callback(self, data):
         print('Collecting obstacles')

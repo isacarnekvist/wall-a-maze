@@ -50,10 +50,10 @@ Localization::Localization(ros::NodeHandle &node_handle) {
     particle_filter = new ParticleFilter(
         /* TODO Change these to be set from the map */
         1048,       /* Number of particles */
-        0.8,          /* x_min */
-        1.2,       /* x_max */
-        1.8,          /* y_min */
-        2.2,       /* y_max */
+        2.0,          /* x_min */
+        2.2,       /* x_max */
+        0.0,          /* y_min */
+        0.4,       /* y_max */
         0,          /* theta_min */
         2 * M_PI    /* theta_max */
     );
