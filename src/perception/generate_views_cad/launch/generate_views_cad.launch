@@ -1,0 +1,6 @@
+<launch>
+	<!-- <rosparam file="$(find general)/config/general_params.yaml" command="load" /> -->
+	<rosparam file="$(find generate_views_cad)/config/generate_views_cad_params.yaml" command="load" />
+	<node pkg="generate_views_cad" type="generate_views_cad" name="generate_views_cad" output="screen" />
+		
+</launch>

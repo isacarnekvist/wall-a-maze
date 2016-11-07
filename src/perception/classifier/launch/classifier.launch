@@ -1,0 +1,8 @@
+<launch>
+	<!-- <rosparam file="$(find general)/config/general_params.yaml" command="load" /> -->
+	<rosparam file="$(find classifier)/config/classifier_params.yaml" command="load" />
+	<node pkg="classifier" type="classifier" name="classifier" output="screen" />
+	<node pkg="classifier" type="pointCloud_broadcaster.py" name="pointCloud_broadcaster" />
+	<!-- <node pkg="ras_espeak" type="espeak_node" name="espeak" /> -->
+		
+</launch>
