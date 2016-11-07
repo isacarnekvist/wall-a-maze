@@ -30,13 +30,18 @@ class Planner:
         if self.grid is None or self.graph is None:
             raise ValueError('Have not recieved occupancy grid!')
         print('Executing planner goal:')
-        for x, y in euler_path_plan(self.x, self.y, goal.x, goal.y, self.grid, self.graph):
-            print(x, y)
+        plan = euler_path_plan(self.x, self.y, goal.x, goal.y, self.grid, self.graph)
+        for i in range(len(plan)):
+            x, y = plan[i]
             partial_goal = LineTargetGoal()
             partial_goal.x = x
             partial_goal.y = y
-            partial_goal.theta = 3.14
-            partial_goal.ignore_end_rotation = True
+            if i == len(plan) - 1:
+                # Only go rotate to goal theta if total path if finished
+                partial_goal.theta = goal.theta
+                partial_goal.ignore_end_rotation = False
+            else:
+                partial_goal.ignore_end_rotation = True
             self.line_client.send_goal(partial_goal)
             self.line_client.wait_for_result()
         self.server.set_succeeded()
