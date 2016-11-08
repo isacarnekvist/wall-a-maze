@@ -27,9 +27,9 @@ def robot_to_uarm():
 
 if __name__ == '__main__':
 	rospy.init_node('arm_broadcaster')
-	rate = rospy.Rate(10) #10hz
+	rate = rospy.Rate(2) #10hz
 	
 	while not rospy.is_shutdown():
 		robot_to_uarm()
-		rate.sleep
+		rate.sleep()
 
