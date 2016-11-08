@@ -33,10 +33,11 @@
 	<include file="$(find wheels)/launch/controller.launch"/>
 
 	<!-- Realsense Camera -->
-	<!-- <include file="$(find realsense_camera)/launch/sr300_nodelet_rgbd.launch" /> -->
+	<include file="$(find realsense_camera)/launch/sr300_nodelet_rgbd.launch" />
 
-	<!-- UArm Core -->
-	<node name="uarm_core" pkg="uarm" output="screen" type="uarm_core.py" args="connect l"/>
+	<!-- UArm -->
+	<include file="$(find uarm)/launch/kth_uarm.launch"/>
+	<node name="arm_broadcaster" pkg="manipulation" type="arm_broadcaster.py" />
 
 	<!-- Map Node -->
 	<node name="ras_maze_map" pkg="ras_maze_map" type="ras_maze_map_node" args="_map_file:=$(env MAP_PATH)"/>

@@ -1,0 +1,16 @@
+# Goal
+geometry_msgs/PointStamped pickup_position
+
+# later also goal_position
+
+---
+# Result
+bool finished
+
+# later also placed_position
+
+---
+# Feedback message
+bool outOfRange
+
+# later also bool inControlPosition to control if actually picked up // Or use switch at the end of eef?
