@@ -1,9 +1,6 @@
 <launch>
   	<!-- export ROS_MASTER_URI=http://192.168.1.206:11311 -->
 
-	<!-- Planner -->
-	<node name="planner_server" pkg="planner" type="planner_server.py" />
-
 	<!-- Left Motor -->
 	<node name="left_motor" pkg="phidgets" type="motor" args="_serial:=473027 __name:=left_motor _name:=left_motor _frequency:=125" >
 		<param name="_serial" value="473027" />
@@ -32,17 +29,12 @@
 	<!-- Wheel Controller -->
 	<include file="$(find wheels)/launch/controller.launch"/>
 
-	<!-- Realsense Camera -->
-	<include file="$(find realsense_camera)/launch/sr300_nodelet_rgbd.launch" />
-
 	<!-- UArm -->
 	<include file="$(find uarm)/launch/kth_uarm.launch"/>
 	<node name="arm_broadcaster" pkg="manipulation" type="arm_broadcaster.py" />
+	<node name="manipulation" pkg="manipulation" type="move_arm_client_class.py" />
 
 	<!-- Map Node -->
 	<node name="ras_maze_map" pkg="ras_maze_map" type="ras_maze_map_node" args="_map_file:=$(env MAP_PATH)"/>
-
-	<!-- Localization -->
-	<node name="localization" pkg="localization" type="localization" />
 
 </launch>

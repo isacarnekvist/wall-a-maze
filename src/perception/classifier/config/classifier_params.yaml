@@ -1,6 +1,6 @@
 # For classifier
-translation: { x: 0.115, y: 0.0, z: 0.165 }
-rotation: { yaw: 0.0, roll: 30.0, pitch: 0.0 }
+translation: { x: 0.095, y: 0.0, z: 0.165 }
+rotation: { yaw: 0.0, roll: 32.5, pitch: 0.0 }
 
 color_names: [ 'red' ]
 # , 'blue', 'purple', 'green_L', 'green_D', 'yellow', 'orange' ]
