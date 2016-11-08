@@ -5,7 +5,7 @@
 #include "std_msgs/String.h"
 #include <ros/package.h>
 
-#include "perception/Object.h"
+#include "classifier/Object.h"
 
 // C++ General
 #include <iostream>
@@ -14,6 +14,7 @@
 #include <vector>
 #include <map>
 #include <fstream>
+#include <utility>      // std::pair, std::make_pair
 
 // PCL General
 #include <pcl/point_cloud.h>
@@ -23,7 +24,8 @@
 // PCL Features
 #include <pcl/features/normal_3d.h>
 //#include <pcl/features/cvfh.h>
-#include <pcl/features/our_cvfh.h>
+//#include <pcl/features/our_cvfh.h>
+#include <pcl/features/vfh.h>
 
 // PCL Filters
 #include <pcl/filters/voxel_grid.h>
@@ -61,7 +63,7 @@ std::vector<std::string> colorNames;
 ros::Publisher pub;
 ros::Publisher object_pub;
 ros::Publisher point_pub;
-//ros::Publisher espeak_pub;
+ros::Publisher espeak_pub;
 
 double transform_x;
 double transform_y;
@@ -141,13 +143,13 @@ void computeCloudNormals(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud, pcl::Point
 }
 
 void computeVFHSignature(pcl::PointCloud<pcl::VFHSignature308>::Ptr & vfhs, pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud) {
-    pcl::OURCVFHEstimation<pcl::PointXYZ, pcl::Normal, pcl::VFHSignature308> cvfh;
+    pcl::VFHEstimation<pcl::PointXYZ, pcl::Normal, pcl::VFHSignature308> cvfh;
     cvfh.setInputCloud(cloud);
 
     // Get normals for cloud
     pcl::PointCloud<pcl::Normal>::Ptr cloud_normals (new pcl::PointCloud<pcl::Normal>);
-    computeCloudNormals(cloud, cloud_normals);
 
+    computeCloudNormals(cloud, cloud_normals);
     cvfh.setInputNormals(cloud_normals);
 
     // Create an empty kdtree representation, and pass it to the FPFH estimation object.
@@ -156,9 +158,9 @@ void computeVFHSignature(pcl::PointCloud<pcl::VFHSignature308>::Ptr & vfhs, pcl:
 
     cvfh.setSearchMethod(tree);
 
-    cvfh.setCurvatureThreshold(0.025f);
-    cvfh.setClusterTolerance(0.015f);   // 1.5 cm, three times the leaf size
-    cvfh.setEPSAngleThreshold(0.13f);
+    //cvfh.setCurvatureThreshold(0.025f);
+    //cvfh.setClusterTolerance(0.015f);   // 1.5 cm, three times the leaf size
+    //cvfh.setEPSAngleThreshold(0.13f);
 
     //cvfh.setKSearch(100);   // ???
 
@@ -206,16 +208,16 @@ void generateHistogram(vfh_model & vfh, pcl::PointCloud<pcl::VFHSignature308>::P
 
 void generateHistogram(vfh_model & vfh, pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud) {
     pcl::PointCloud<pcl::VFHSignature308>::Ptr vfhs (new pcl::PointCloud<pcl::VFHSignature308>);
+
     computeVFHSignature(vfhs, cloud);
 
     //pcl::io::savePCDFileASCII(base_dir + "/Views/Real/1" + data_extension, *vfhs);
     //pcl::io::savePCDFileASCII(data_dir + "/" + "Test" + "/" + "Test" + data_extension, *vfhs);
 
     generateHistogram(vfh, vfhs);
-
 }
 
-std::string classify(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud) {
+void classify(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud, std::vector<std::pair<std::string, float> > & candidates) {
 
 
     // Place the object in the center
@@ -233,7 +235,7 @@ std::string classify(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud) {
 
 
 
-    int k = 6;
+    int k = 100;
 
     std::vector<vfh_model> models;
     flann::Matrix<int> k_indices;
@@ -245,9 +247,9 @@ std::string classify(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud) {
 
     vfh_model histogram;
     //loadVFHModel(histogram, "Cube", "5"); // TODO
-    std::cout << "Hej" << std::endl;
+
     generateHistogram(histogram, cloud);
-    std::cout << models.size() << std::endl;
+
 
 
     flann::Index<flann::ChiSquareDistance<float> > index (data, flann::SavedIndexParams(training_dir + "/kdtree.idx"));
@@ -255,10 +257,15 @@ std::string classify(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud) {
     nearestKSearch(index, histogram, k, k_indices, k_distances);
 
     for (int i = 0; i < k; i++) {
-        std::cout << i << " - " << models.at(k_indices[0][i]).first << " (" << k_indices[0][i] << ")" << " with a distance of: " << k_distances[0][i] << std::endl;
+        //std::cout << i << " - " << models.at(k_indices[0][i]).first << " (" << k_indices[0][i] << ")" << " with a distance of: " << k_distances[0][i] << std::endl;
     }
 
-    return models.at(k_indices[0][0]).first;
+    for (size_t i = 0; i < k; i++) {
+        candidates.push_back(std::make_pair(models.at(k_indices[0][i]).first, k_distances[0][i]));
+    }
+
+
+    //return candidates;
 }
 
 std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
@@ -271,10 +278,114 @@ std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
         cloud_xyz->points[i].z = cloud_in->points[i].z;
     }
 
+    std::vector<std::pair<std::string, float> > candidates;
+
+    classify(cloud_xyz, candidates);
+
+    if (color == "red") {
+        // Red Cube
+        // Red Hollow Cube
+        // Red Ball
+
+        for (size_t i = 0; i < candidates.size(); i++) {
+            if (candidates[i].second > 300) {
+                return "object"; // We are too unsure
+            }
+
+            if (candidates[i].first == "Cube") {
+                return "Cube";
+            } else if (candidates[i].first == "Ball") {
+                return "Ball";
+            }
+        }
+
+    } else if (color == "blue") {
+        // Blue Cube
+        // Blue Triangle
+        for (size_t i = 0; i < candidates.size(); i++) {
+            if (candidates[i].second > 300) {
+                return "object"; // We are too unsure
+            }
+
+            if (candidates[i].first == "Cube") {
+                return "Cube";
+            } else if (candidates[i].first == "Triangle") {
+                return "Triangle";
+            }
+        }
+
+    } else if (color == "purple") {
+        // Purple Cross
+        // Purple Star
+
+        for (size_t i = 0; i < candidates.size(); i++) {
+            if (candidates[i].second > 300) {
+                return "object"; // We are too unsure
+            }
+
+            if (candidates[i].first == "Cross") {
+                return "Cross";
+            } else if (candidates[i].first == "Star") {
+                return "Star";
+            }
+        }
+
+    } else if (color == "yellow") {
+        // Yellow Cube
+        // Yellow Ball
+
+        for (size_t i = 0; i < candidates.size(); i++) {
+            if (candidates[i].second > 300) {
+                return "object"; // We are too unsure
+            }
+
+            if (candidates[i].first == "Cube") {
+                return "Cube";
+            } else if (candidates[i].first == "Ball") {
+                return "Ball";
+            }
+        }
+
+    } else if (color == "green") {
+        // Green Cube
+        // Green Cylinder
+
+        for (size_t i = 0; i < candidates.size(); i++) {
+            if (candidates[i].second > 300) {
+                return "object"; // We are too unsure
+            }
+
+            if (candidates[i].first == "Cube") {
+                return "Cube";
+            } else if (candidates[i].first == "Cylinder") {
+                return "Cylinder";
+            }
+        }
+    } else if (color == "orange") {
+        // TODO: Still have to check?!
+        /*
+        for (size_t i = 0; i < candidates.size(); i++) {
+            if (candidates[i].second > 300) {
+                return "object"; // We are too unsure
+            }
+
+            if (candidates[i].first == "Star") {
+                return patric;
+            }
+        }
+        */
+
+        return "patric";
+    }
+
+    return "object";
+
     // TODO
-    std::cout << classify(cloud_xyz) << std::endl;
-    return " thing";
+    //std::cout << classify(cloud_xyz) << std::endl;
+    //return classify(cloud_xyz);
 }
+
+std::vector<std::string> said;
 
 void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input_cloud) {
     // Filtering input scan to increase speed of registration.
@@ -288,11 +399,11 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
     // Transform
     const Eigen::Vector3f translation(transform_y, -transform_z, transform_x);
 
-    double yaw = transform_yaw;
+    double yaw = transform_yaw * PI / 180.0;
     //double roll = -30.0 * PI / 180.0;
     //double roll = -42.0 * PI / 180.0;
     double roll = -transform_roll * PI / 180.0;
-    double pitch = transform_pitch;
+    double pitch = transform_pitch * PI / 180.0;
 
     double t0 = std::cos(yaw * 0.5f);
     double t1 = std::sin(yaw * 0.5f);
@@ -328,6 +439,10 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
         // Filter on color
         PointCloudHelper::HSVFilter(color_cloud, color_cloud, colors[i]);
 
+        // Check if cloud is empty
+        if (color_cloud->points.size() == 0) {
+            continue;
+        }
 
         // Remove outliers
         PointCloudHelper::removeOutliers(color_cloud, color_cloud);
@@ -340,7 +455,6 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
         // Seperate (Segmatation)
         std::vector<pcl::PointIndices> cluster_indices = PointCloudHelper::segmentation(color_cloud);
         //std::cout << cluster_indices.size() << std::endl;
-
 
         for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin(); it != cluster_indices.end(); it++) {
             pcl::PointCloud<pcl::PointXYZRGB>::Ptr cluster_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
@@ -357,10 +471,14 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
 
             // Classify
             std::string objectType = classify(cluster_cloud, colorNames[i]);
+            //std::cout << objectType << std::endl;
 
             // Filter so only top remains
             // TODO: Do this before classify?!
-            perception::Object object = PointCloudHelper::getOptimalPickupPoint(cluster_cloud);
+            pcl::transformPointCloud(*cluster_cloud, *cluster_cloud, translation, rotation);
+            classifier::Object object = PointCloudHelper::getOptimalPickupPoint(cluster_cloud);
+
+            std::cout << "X: " << object.x << ", Y: " << object.y << ", Z: " << object.z << std::endl;
 
             object.color = colorNames[i];
             object.type = 1;
@@ -382,10 +500,16 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
             object_pub.publish(object);
             point_pub.publish(point);
 
+            for (size_t i = 0; i < said.size(); i++) {
+                if (said[i] == objectType) {
+                    return;
+                }
+            }
+            said.push_back(objectType);
             std_msgs::String phrase;
             phrase.data = "I see a " + object.color + " " + objectType;
 
-            //espeak_pub.publish(phrase);
+            espeak_pub.publish(phrase);
         }
     }
 
@@ -404,9 +528,9 @@ int main(int argc, char **argv) {
 
     pub = nh.advertise<sensor_msgs::PointCloud2> ("output", 1);
 
-    object_pub = nh.advertise<perception::Object> ("objectPos_wheelcenter2", 1);
+    object_pub = nh.advertise<classifier::Object> ("objectPos_wheelcenter2", 1);
     point_pub = nh.advertise<geometry_msgs::PointStamped> ("objectPos_wheelcenter", 1);
-    //espeak_pub = nh.advertise<std_msgs::String> ("espeak/string", 1);
+    espeak_pub = nh.advertise<std_msgs::String> ("espeak/string", 1);
 
     ros::spin();
 }

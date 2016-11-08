@@ -7,7 +7,7 @@
 #include <pcl/point_types.h>
 #include <pcl/PointIndices.h>
 
-#include "perception/Object.h"
+#include "classifier/Object.h"
 
 #include "hsv_color.h"
 
@@ -17,7 +17,7 @@ namespace PointCloudHelper {
 
     void HSVFilter(pcl_rgb::Ptr cloud_in, pcl_rgb::Ptr cloud_out, hsvColor color);
 
-    perception::Object getOptimalPickupPoint(pcl_rgb::Ptr cloud_in);
+    classifier::Object getOptimalPickupPoint(pcl_rgb::Ptr cloud_in);
 
     void removeOutliers(pcl_rgb::Ptr cloud_in, pcl_rgb::Ptr cloud_out, int numNeighbours = 20, double stddev = 1.0);
 

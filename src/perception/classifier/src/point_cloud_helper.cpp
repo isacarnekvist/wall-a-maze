@@ -53,7 +53,7 @@ namespace PointCloudHelper {
         extract.filter(*cloud_out);
     }
 
-    perception::Object getOptimalPickupPoint(pcl_rgb::Ptr cloud_in) {
+    classifier::Object getOptimalPickupPoint(pcl_rgb::Ptr cloud_in) {
         pcl::PointXYZRGB min_p, max_p;
 
         pcl::getMinMax3D(*cloud_in, min_p, max_p);
@@ -86,7 +86,7 @@ namespace PointCloudHelper {
 
         // std::cout << "Forward: " << forward / numPoints << "\tSide: " << side / numPoints << "\tHeight: " << height / numPoints << std::endl;
 
-        perception::Object point;
+        classifier::Object point;
         point.x = forward / numPoints;
         point.y = side / numPoints;
         point.z = height / numPoints;

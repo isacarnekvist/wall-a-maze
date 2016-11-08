@@ -51,47 +51,6 @@ namespace PointCloudHelper {
         extract.filter(*cloud_out);
     }
 
-    perception::Object getOptimalPickupPoint(pcl_rgb::Ptr cloud_in) {
-        pcl::PointXYZRGB min_p, max_p;
-
-        pcl::getMinMax3D(*cloud_in, min_p, max_p);
-
-        pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_final(new pcl::PointCloud<pcl::PointXYZRGB>);
-
-        pcl::PassThrough<pcl::PointXYZRGB> pass;
-        pass.setInputCloud (cloud_in);
-        pass.setFilterFieldName ("y");
-        pass.setFilterLimits (min_p.y - 0.015, min_p.y + 0.015);
-        pass.filter(*cloud_final);
-
-        // Calculate optimal pick up position
-        // PCL -> RIKTIG
-        // z = x
-        // x = y
-
-        double forward = 0.0;
-        double side = 0.0;
-        double height = 0.0;
-
-        double numPoints = 0.0;
-        for (pcl::PointCloud<pcl::PointXYZRGB>::iterator point = cloud_final->points.begin(); point < cloud_final->points.end(); point++) {
-            numPoints++;
-
-            forward += point->z;
-            side += point->x;
-            height -= point->y; // Inverted
-        }
-
-        // std::cout << "Forward: " << forward / numPoints << "\tSide: " << side / numPoints << "\tHeight: " << height / numPoints << std::endl;
-
-        perception::Object point;
-        point.x = forward / numPoints;
-        point.y = side / numPoints;
-        point.z = height / numPoints;
-
-        return point;
-    }
-
     void removeOutliers(pcl_rgb::Ptr cloud_in, pcl_rgb::Ptr cloud_out, int numNeighbours, double stddev) {
         pcl::StatisticalOutlierRemoval<pcl::PointXYZRGB> sor;
         sor.setInputCloud(cloud_in);

@@ -113,7 +113,8 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
 
         // Save the object Point Cloud to file
         pcl::io::savePCDFileASCII(save_dir + "/Real/" + object + "/" + getFileName() + data_extension, *cluster_cloud);
-    }
+   	std::cout << "Save a new Point Cloud" << std::endl;
+   }
 }
 
 
