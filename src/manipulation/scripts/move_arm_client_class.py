@@ -20,7 +20,7 @@ class Manipulation():
 	
 		# Wait for transform
 		self.listener = tf.TransformListener()
-		self.listener.waitForTransform("wheel_center", "uarm", rospy.Time(), rospy.Duration(4.0))
+		self.listener.waitForTransform("wheel_center", "uarm", rospy.Time(), rospy.Duration(8.0))
 	
 		# Wait for move and pump service
 		rospy.wait_for_service('/uarm/move_to')
@@ -31,8 +31,7 @@ class Manipulation():
 		
 		# 
 		self.goalPos_wheel = PointStamped()
-		self.goalPosStamped = PointStamped()
-		self.goalPosStamped.header.frame_id = 'None'
+		self.goalPosStamped = None
 	
 		# Define move parameters 
 		self.move_mode = 0	# (0 absolute,1 realtive)
@@ -203,6 +202,9 @@ class Manipulation():
 		initial_state = self.moveToPos_client(self.initPos_arm, self.move_mode, self.moveDuration_abs, self.interpol_linear) 
 		print("Moved to resting position",initial_state)
 		#rospy.sleep(2.0)
+
+ 		if self.goalPosStamped is None:
+			return
 		
 		# To GOAL position
 		if self.goalPosStamped.header.frame_id is 'None':
@@ -226,6 +228,8 @@ class Manipulation():
 		
 		initial_state = self.moveToPos_client(self.initPos_arm, self.move_mode, self.moveDuration_abs, self.interpol_linear)
 		print "Back in initial position"
+
+		self.goalPosStamped = None
 	
 
 
