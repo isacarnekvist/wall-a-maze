@@ -1,9 +1,0 @@
-# Goal
-float32 x
-float32 y
-float32 theta
-bool ignore_end_rotation
----
-# Ignore results
----
-# Ignore feedback
