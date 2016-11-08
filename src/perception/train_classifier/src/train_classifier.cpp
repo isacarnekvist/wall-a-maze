@@ -11,8 +11,9 @@
 
 #include <string>
 
-#include <pcl/features/cvfh.h>
-#include <pcl/features/our_cvfh.h>
+//#include <pcl/features/cvfh.h>
+//#include <pcl/features/our_cvfh.h>
+#include <pcl/features/vfh.h>
 
 #include <pcl/features/normal_3d.h>
 #include <pcl/filters/approximate_voxel_grid.h>
@@ -134,7 +135,7 @@ void computeCloudNormals(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud, pcl::Point
 }
 
 void computeVFHSignature(pcl::PointCloud<pcl::VFHSignature308>::Ptr & vfhs, pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud) {
-    pcl::OURCVFHEstimation<pcl::PointXYZ, pcl::Normal, pcl::VFHSignature308> cvfh;
+    pcl::VFHEstimation<pcl::PointXYZ, pcl::Normal, pcl::VFHSignature308> cvfh;
     cvfh.setInputCloud(cloud);
 
     // Get normals for cloud
@@ -149,15 +150,15 @@ void computeVFHSignature(pcl::PointCloud<pcl::VFHSignature308>::Ptr & vfhs, pcl:
 
     cvfh.setSearchMethod(tree);
 
-    cvfh.setCurvatureThreshold(0.025f);
-    cvfh.setClusterTolerance(0.015f);   // 1.5 cm, three times the leaf size
-    cvfh.setEPSAngleThreshold(0.13f);
+    //cvfh.setCurvatureThreshold(0.025f);
+    //cvfh.setClusterTolerance(0.015f);   // 1.5 cm, three times the leaf size
+    //cvfh.setEPSAngleThreshold(0.13f);
 
     //cvfh.setKSearch(100);   // ???
 
     //cvfh.setEPSAngleThreshold(angle);
     //cvfh.setCurvatureThreshold(max_curv);
-    cvfh.setNormalizeBins(true);
+    cvfh.setNormalizeBins(false);
 
     cvfh.compute(*vfhs);
 

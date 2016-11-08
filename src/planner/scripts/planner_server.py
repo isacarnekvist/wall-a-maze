@@ -70,7 +70,7 @@ class Planner:
             except StopIteration:
                 if plan:
                     if len(plan) == 1:
-                        current_target = self.line_iterator(*plan[0], final_rotation=True)
+                        current_target = self.line_iterator(*plan[0], final_rotation=goal.theta)
                     else:
                         current_target = self.line_iterator(*plan[0])
                     plan = plan[1:]
@@ -79,8 +79,9 @@ class Planner:
                     break
             rate.sleep()
         self.stop()
+        self.has_target = False
 
-    def line_iterator(self, x, y, final_rotation=True):
+    def line_iterator(self, x, y, final_rotation=None):
         # Initial rotation
         start_theta = atan2(y - self.y, x - self.x)
         if start_theta < 0.0:
@@ -98,7 +99,13 @@ class Planner:
             yield
         self.stop()
 
-        self(0.5)
+        sleep(0.5)
+
+        if final_rotation is not None:
+            for _ in self.rotation_iterator(final_rotation):
+                yield
+            self.stop()
+            sleep(0.5)
 
     def rotation_iterator(self, theta):
         msg = Twist()

@@ -166,7 +166,7 @@ void computeVFHSignature(pcl::PointCloud<pcl::VFHSignature308>::Ptr & vfhs, pcl:
 
     //cvfh.setEPSAngleThreshold(angle);
     //cvfh.setCurvatureThreshold(max_curv);
-    cvfh.setNormalizeBins(true);
+    cvfh.setNormalizeBins(false);
 
     cvfh.compute(*vfhs);
 
@@ -235,7 +235,7 @@ void classify(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud, std::vector<std::pair
 
 
 
-    int k = 100;
+    int k = 50;
 
     std::vector<vfh_model> models;
     flann::Matrix<int> k_indices;
@@ -294,7 +294,7 @@ std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
 
             if (candidates[i].first == "Cube") {
                 return "Cube";
-            } else if (candidates[i].first == "Ball") {
+            } else if (candidates[i].first == "Sphere" || candidates[i].first == "Ball") {
                 return "Ball";
             }
         }
@@ -478,17 +478,17 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
             pcl::transformPointCloud(*cluster_cloud, *cluster_cloud, translation, rotation);
             classifier::Object object = PointCloudHelper::getOptimalPickupPoint(cluster_cloud);
 
-            std::cout << "X: " << object.x << ", Y: " << object.y << ", Z: " << object.z << std::endl;
+            std::cout << colorNames[i] << " " << objectType << " at: " << "X: " << object.x << ", Y: " << object.y << ", Z: " << object.z << std::endl;
 
             object.color = colorNames[i];
             object.type = 1;
 
             // Output
-            sensor_msgs::PointCloud2 output;
+            //sensor_msgs::PointCloud2 output;
 
-            pcl::toROSMsg(*cluster_cloud, output);
+            //pcl::toROSMsg(*cluster_cloud, output);
 
-            pub.publish(output);
+            //pub.publish(output);
 
             geometry_msgs::PointStamped point;
             point.point.x = object.x;
