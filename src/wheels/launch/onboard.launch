@@ -29,6 +29,9 @@
 	<!-- Wheel Controller -->
 	<include file="$(find wheels)/launch/controller.launch"/>
 
+	<!-- Planner -->
+	<node name="planner" pkg="planner" type="planner_server.py" />
+
 	<!-- UArm -->
 	<include file="$(find uarm)/launch/kth_uarm.launch"/>
 	<node name="arm_broadcaster" pkg="manipulation" type="arm_broadcaster.py" />
@@ -36,5 +39,8 @@
 
 	<!-- Map Node -->
 	<node name="ras_maze_map" pkg="ras_maze_map" type="ras_maze_map_node" args="_map_file:=$(env MAP_PATH)"/>
+
+    <!-- Speaker node -->
+	<node name="speaker" pkg="ras_espeak" type="espeak_node"/>
 
 </launch>

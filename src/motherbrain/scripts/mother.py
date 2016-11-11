@@ -45,7 +45,7 @@ class Mother:
         detected_object = None
         pickup_goal = None
         rate = rospy.Rate(2)
-        last_target = PlannerTarget(x=1.5, y=0.65, theta=3.14 / 2, is_abort_action=False)
+        last_target = PlannerTarget(x=2.2, y=0.2, theta=3.14 / 2, is_abort_action=False)
         cancel = PlannerTarget(is_abort_action=True)
         self.planner.publish(last_target)
         while not rospy.is_shutdown():
