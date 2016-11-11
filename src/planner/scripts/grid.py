@@ -119,12 +119,34 @@ def lines_to_grid(lines, cell_width=0.03, padding=0.4):
     return o
 
 
+def shortest_path_bfs(g, start, goal):
+    q = Queue.Queue()
+    preds = {start: None}
+    q.put(start)
+    while not q.empty():
+        c = q.get()
+        if c == goal:
+            break
+        for n in g[c]:
+            if n not in preds:
+                q.put(n)
+                preds[n] = c
+    if c != goal:
+        raise ValueError('No path found')
+    path = [goal]
+    c = goal
+    while c != start:
+        c = preds[c]
+        path.append(c)
+    return reversed(path)
+
+
 def euler_path_plan(x1, y1, x2, y2, grid, graph):
     x1, y1 = grid.closest_non_occupied(x1, y1)
     x1_ind, y1_ind = grid.coord_to_inds(x1, y1)
     x2, y2 = grid.closest_non_occupied(x2, y2)
     x2_ind, y2_ind = grid.coord_to_inds(x2, y2)
-    shortest_path = networkx.shortest_path(
+    shortest_path = shortest_path_bfs(
         graph,
         (x1_ind, y1_ind),
         (x2_ind, y2_ind)
