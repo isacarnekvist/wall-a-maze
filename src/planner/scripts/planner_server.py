@@ -63,6 +63,8 @@ class Planner:
         plan = euler_path_plan(self.x, self.y, goal.x, goal.y, self.grid, self.graph)
         if len(plan) == 1:
             current_target = self.line_iterator(*plan[0], final_rotation=goal.theta)
+        else:
+            current_target = self.line_iterator(*plan[0])
         plan = plan[1:]
 
         while self.has_target:
