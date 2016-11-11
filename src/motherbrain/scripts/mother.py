@@ -1,3 +1,6 @@
+from __future__ import print_function
+import sys
+import argparse
 from time import sleep
 
 import tf
@@ -40,16 +43,19 @@ class Mother:
         self.theta = 0.0
         self.possible_objects = []
 
-    def run(self):
+    def run(self, x=None, y=None, theta=None):
         object_target = None # the actual 
         detected_object = None
         pickup_goal = None
-        rate = rospy.Rate(2)
-        last_target = PlannerTarget(x=2.2, y=0.2, theta=3.14 / 2, is_abort_action=False)
-        cancel = PlannerTarget(is_abort_action=True)
-        self.planner.publish(last_target)
+        rate = rospy.Rate(2) # Might want to increase this later
+        if x is not None:
+            last_target = PlannerTarget(x=x, y=y, theta=theta, is_abort_action=False)
+            self.planner.publish(last_target)
         while not rospy.is_shutdown():
             rate.sleep()
+
+    def stop(self):
+        self.planner.publish(PlannerTarget(is_abort_action=True))
 
     def perception_callback(self, data):
         if self.x is None: # fix this properly!
@@ -91,9 +97,45 @@ class Mother:
 
 
 if __name__ == '__main__':
-    mother = Mother()
-    rospy.Subscriber('objectPos_wheelcenter2', classifierObject, mother.perception_callback)
-    rospy.Subscriber('position', PoseStamped, mother.position_callback)
-    rospy.init_node('motherbrain')
-    mother.run()
-    rospy.spin()
+    parser = argparse.ArgumentParser(description='Start the motherbrain (At your own risk!)')
+    subparsers = parser.add_subparsers()
+    
+    position_parser = subparsers.add_parser(
+        'goto',
+        help='Command the robot to a position on the map'
+    )
+    position_parser.add_argument('x', type=float, help='target x coordinate in meters')
+    position_parser.add_argument('y', type=float, help='target y coordinate in meters')
+    position_parser.add_argument('theta', type=float, help='target rotation in radians')
+    position_parser.set_defaults(which='goto')
+
+    discovery_parser = subparsers.add_parser(
+        'discovery',
+        help='Start first part of contest, discovery and mapping of the maze'
+    )
+    discovery_parser.set_defaults(which='discovery')
+
+    pickup_parser = subparsers.add_parser(
+        'pickup',
+        help='Start second part of contest, collect obstacles'
+    )
+    pickup_parser.set_defaults(which='pickup')
+
+    # Handle different parser cases
+    args = parser.parse_args()
+    x, y, theta = None, None, None
+    if args.which == 'goto':
+        x = args.x
+        y = args.y
+        theta = args.theta
+
+    try:
+        mother = Mother()
+        rospy.Subscriber('objectPos_wheelcenter2', classifierObject, mother.perception_callback)
+        rospy.Subscriber('position', PoseStamped, mother.position_callback)
+        rospy.init_node('motherbrain')
+        mother.run(x=x, y=y, theta=theta)
+        rospy.spin()
+    except KeyboardInterrupt:
+        mother.stop()
+        print('Got keyboard interrupt, asking planner to stop robot.', file=sys.stderr)
