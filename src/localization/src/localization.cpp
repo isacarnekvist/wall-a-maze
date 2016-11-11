@@ -13,6 +13,7 @@
 #include <geometry_msgs/Point32.h>
 #include <geometry_msgs/Polygon.h>
 #include <geometry_msgs/PoseStamped.h>
+#include <planner/PlannerStatus.h>
 
 #include "map.hpp"
 #include "stats.hpp"
@@ -162,6 +163,9 @@ int main(int argc, char **argv) {
         &Localization::odometry_callback,
         &localization
     );
+
+    ros::ServiceClient planner_status_client = node_handle.serviceClient<planner::PlannerStatus>("planner_ready");
+    planner_status_client.waitForExistence();
 
     bool temp_updated_map = false;
     ros::Rate rate (10);

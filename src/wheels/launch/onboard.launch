@@ -22,6 +22,7 @@
 	
 	<node name="laser_broadcaster" pkg="localization" type="laser_broadcaster.py" />
 	<node name="robot_broadcaster" pkg="localization" type="robot_broadcaster.py" />
+	<node name="localization" pkg="localization" type="localization" />
 	
 	<!-- Laser scanner -->
 	<include file="$(find wheels)/launch/rplidar.launch"/>
@@ -35,7 +36,7 @@
 	<!-- UArm -->
 	<include file="$(find uarm)/launch/kth_uarm.launch"/>
 	<node name="arm_broadcaster" pkg="manipulation" type="arm_broadcaster.py" />
-	<node name="manipulation" pkg="manipulation" type="move_arm_client_class.py" />
+	<!--node name="manipulation" pkg="manipulation" type="move_arm_client_class.py" -->
 
 	<!-- Map Node -->
 	<node name="ras_maze_map" pkg="ras_maze_map" type="ras_maze_map_node" args="_map_file:=$(env MAP_PATH)"/>

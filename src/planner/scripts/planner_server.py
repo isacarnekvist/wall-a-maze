@@ -10,6 +10,7 @@ import rospy
 import numpy as np
 from time import sleep
 from math import atan2
+from planner.srv import PlannerStatus
 from planner.msg import PlannerTarget
 from geometry_msgs.msg import Polygon, PoseStamped, Twist
 
@@ -158,6 +159,9 @@ class Planner:
         ]
         self.theta = tf.transformations.euler_from_quaternion(q)[-1] # roll
 
+    def status_callback(self, args):
+        return True
+
 
 if __name__ == '__main__':
     rospy.init_node('planner')
@@ -165,4 +169,5 @@ if __name__ == '__main__':
     rospy.Subscriber('obstacles', Polygon, planner.obstacles_callback)
     rospy.Subscriber('position', PoseStamped, planner.position_callback)
     rospy.Subscriber('planner', PlannerTarget, planner.target_callback)
+    status_service = rospy.Service('planner_ready', PlannerStatus, planner.status_callback)
     rospy.spin()
