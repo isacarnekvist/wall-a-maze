@@ -6,6 +6,7 @@ import tf
 import numpy as np
 
 from uarm.srv import *
+from sensor_msgs.msg import JointState
 from geometry_msgs.msg import Point, PointStamped
 from std_msgs.msg import Header
 
@@ -16,23 +17,32 @@ class Manipulation():
 	def __init__(self):
 		rospy.init_node('move_arm_client')
 	
-		rospy.Subscriber('/objectPos_wheelcenter', PointStamped, self.goal_callback)
-	
+		rospy.Subscriber("/objectPos_wheelcenter", PointStamped, self.goal_callback)
+		rospy.Subscriber("/uarm/joint_state", JointState , self.joint_callback)
+		 
 		# Wait for transform
 		self.listener = tf.TransformListener()
 		self.listener.waitForTransform("wheel_center", "uarm", rospy.Time(), rospy.Duration(8.0))
 	
-		# Wait for move and pump service
+		# Wait for move, move_joints, pump and inverse kinematics service
 		rospy.wait_for_service('/uarm/move_to')
 		self.moveTo_service = rospy.ServiceProxy('/uarm/move_to', MoveTo)
+		
+		rospy.wait_for_service('/uarm/move_to_joints')
+		self.moveToJoints_service = rospy.ServiceProxy('/uarm/move_to_joints', MoveToJoints)
 	
 		rospy.wait_for_service('/uarm/pump')
 		self.pump_service = rospy.ServiceProxy('/uarm/pump',Pump)
 		
-		# 
+		rospy.wait_for_service('/uarm/convert_to_joints')
+		self.joint_service = rospy.ServiceProxy('/uarm/convert_to_joints', ConvertToJoints)
+		
+		# Other
 		self.goalPos_wheel = PointStamped()
 		self.goalPosStamped = None
 	
+		self.eefPos_current = JointState()
+		
 		# Define move parameters 
 		self.move_mode = 0	# (0 absolute,1 realtive)
 		self.moveDuration_abs = rospy.Duration(2.0) # (in s)
@@ -45,9 +55,11 @@ class Manipulation():
 		self.eef_orientation = 0
 		self.ignore_orientation = True
 		
-		self.absTol = 0.5	# 5mm absolute tolerance
+		self.j0Tol = 0.5	# degrees
+		self.j1Tol = 1.0
+		self.j2Tol = 1.0
 		
-		# Initial positino
+		# Initial EEF position
 		self.initPos_arm = Point(1.0, 12.0, 14.0)	# in arm frame	
 
 		rate = rospy.Rate(10) #10hz
@@ -69,6 +81,9 @@ class Manipulation():
 		self.goalPosStamped.point.y = self.goalPosStamped.point.y*scale
 		self.goalPosStamped.point.z = self.goalPosStamped.point.z*scale
 
+	
+	def joint_callback(self, data):
+		self.eefPos_current = data
 		
 
 	def transform_wheelToArm(self, data):
@@ -91,17 +106,43 @@ class Manipulation():
 		return data_wheel
 
 
+	def pump_control(self, state):
+		try:	
+			data_arm = self.pump_service(state)
+		except rospy.ServiceException, e:
+			print "Pump service call failed: %s"%e
+			return
+			
+			
+	
+	def convertToJoints_client(self, position, eef_orientation, check_limits):
+		try:
+			joint_position = self.joint_service(position, eef_orientation, check_limits)
+		except rospy.ServiceException, e:
+			print "ConvertToJoint service call failed: %s"%e
+			return
+			
+		return joint_position
+		
+
 
 	def moveToPos_client(self, position, move_mode, move_duration, int_type):
 		try:
 			response = self.moveTo_service(position, self.eef_orientation, move_mode, move_duration, self.ignore_orientation, int_type, self.check_limits)
 			return response
 		except rospy.ServiceException, e:
-			print "Service call failed: %s"%e
+			print "MoveTo service call failed: %s"%e
 	
 	
-	
-	def moveToPos_control(self, position):
+	def moveToJoints_client(self, position, move_mode, move_duration, int_type):
+		try:
+			response = self.moveToJoints_service(position[0], position[1], position[2], position[3], move_mode, move_duration, int_type, self.check_limits)
+			return response
+		except rospy.ServiceException, e:
+			print "MoveToJoints service call failed: %s"%e
+			
+	'''
+	def moveToPos_control_cartesian(self, position):
 		old_position = Point()
 		
 		# Move absolute first time
@@ -145,7 +186,59 @@ class Manipulation():
 				print "corrected z to {}".format(offset_z)
 				
 		print "Final control position is {}".format(old_position.position)		
+	'''		
 				
+	def moveToJointPos_control(self, position):
+		old_position = Point()
+		
+		# Move absolute first time but to higher z value
+		state = None
+		move_mode = 0
+		position_high = position
+		position_high.z = position_high.z + 3.0
+		firstMove_state = self.moveToPos_client(position, move_mode , self.moveDuration_abs, self.interpol_linear)
+
+		
+		# Compute offset in joint space
+		goalPos_joints = self.convertToJoints_client(position, self.eef_orientation, self.check_limits)		
+		
+		offset_j0 = goalPos_joints.j0 - self.eefPos_current.position[0]
+		offset_j1 = goalPos_joints.j1 - self.eefPos_current.position[1]
+		offset_j2 = goalPos_joints.j2 - self.eefPos_current.position[2]
+		offset_j3 = goalPos_joints.j3 - self.eefPos_current.position[3]
+		
+		print "Servo angles are reported to be {}".format(self.eefPos_current.position)
+		print "Goal joint position is {}".format(goalPos_joints)		
+
+		
+		# Reduce offset starting with base orientation, servo 1 and 2
+		while abs(offset_j0) > self.j0Tol:
+			move_mode = 1
+			move_j0 = np.array([offset_j0, 0.0, 0.0, 0.0])
+			state = self.moveToJoints_client(move_j0, move_mode, self.moveDuration_rel, self.interpol_none)
+			print "Corrected j0 due to an offset of {}".format(offset_j0)
+			offset_j0 = goalPos_joints.j0 - state.j0
+			
+		while abs(offset_j1) > self.j1Tol:
+			move_mode = 1
+			move_j1 = np.array([0.0, offset_j1, 0.0, 0.0])
+			state = self.moveToJoints_client(move_j1, move_mode, self.moveDuration_rel, self.interpol_none)
+			print "Corrected j1 due to an offset of {}".format(offset_j1)
+			offset_j1 = goalPos_joints.j1 - state.j1
+			
+		while abs(offset_j2) > self.j2Tol:
+			move_mode = 1
+			move_j2 = np.array([0.0, 0.0, offset_j2, 0.0])
+			state = self.moveToJoints_client(move_j2, move_mode, self.moveDuration_rel, self.interpol_none)
+			print "Corrected j2 due to an offset of {}".format(offset_j2)
+			offset_j2 = goalPos_joints.j2 - state.j2
+
+				
+		print "Final reported position is {}".format(self.eefPos_current.position)	
+		print "Goal position is {}".format(goalPos_joints)
+			
+		return state
+					
 				
 	def moveToGoal(self, goalPos):
 		aboveGoal_pos = Point(goalPos.x, goalPos.y, self.initPos_arm.z)			
@@ -171,26 +264,23 @@ class Manipulation():
 		
 		# Modify goal pos to go to lower z
 		goalPos.z = goalPos.z-2.0
-		atGoal_state = self.moveToPos_client(goalPos,self.move_mode, self.moveDuration_abs, self.interpol_linear)
+		#atGoal_state = self.moveToPos_client(goalPos,self.move_mode, self.moveDuration_abs, self.interpol_linear)
+		atGoal_state = self.moveToJointPos_control(goalPos)
 		
-		#print("Moved to target", atGoal_state)
+		print("Moved to target", atGoal_state)
+		
+		'''
 		atGoal_stamped = PointStamped()
 		atGoal_stamped.point = atGoal_state.position
 		atGoal_stamped.header.frame_id = 'uarm'
 		atGoal_state_wheel = self.transform_armToWheel(atGoal_stamped)
 		print("Moved to target", atGoal_state_wheel)
-		rospy.sleep(2.0)
+		'''
 		
+		rospy.sleep(2.0)
+	
 		return atGoal_state
 		
-		
-		
-	def pump_control(self, state):
-		try:	
-			data_arm = self.pump_service(state)
-		except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
-			print "Failed to change pump status"
-			return
 		
 				
 	def moveSteps(self):
