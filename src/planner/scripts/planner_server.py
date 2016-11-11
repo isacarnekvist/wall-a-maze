@@ -61,7 +61,8 @@ class Planner:
             raise ValueError('Have not recieved occupancy grid!, ignoring request')
             return
         plan = euler_path_plan(self.x, self.y, goal.x, goal.y, self.grid, self.graph)
-        current_target = self.line_iterator(*plan[0])
+        if len(plan) == 1:
+            current_target = self.line_iterator(*plan[0], final_rotation=goal.theta)
         plan = plan[1:]
 
         while self.has_target:
@@ -70,6 +71,7 @@ class Planner:
             except StopIteration:
                 if plan:
                     if len(plan) == 1:
+                        print('plan length 1, final rot:', goal.theta)
                         current_target = self.line_iterator(*plan[0], final_rotation=goal.theta)
                     else:
                         current_target = self.line_iterator(*plan[0])
@@ -110,6 +112,7 @@ class Planner:
     def rotation_iterator(self, theta):
         msg = Twist()
         theta_correction = closest_theta_adjustment(self.theta, theta)
+        print('Correcting theta {} radians'.format(theta_correction))
         msg.angular.z = 1.00 * np.sign(theta_correction)
         time_needed = abs(theta_correction / msg.angular.z)
         secs_needed = int(time_needed)
