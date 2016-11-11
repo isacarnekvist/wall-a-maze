@@ -1,3 +1,9 @@
+#!/usr/bin/env python 
+# -*- coding: utf-8 -*-
+from __future__ import print_function
+
+import sys
+import argparse
 from time import sleep
 
 import tf
@@ -10,7 +16,7 @@ from classifier.msg import Object as classifierObject
 
 
 class DetectedObject:
-    
+
     def __init__(self, x, y, z, type_str, color_str):
         self.x = x
         self.y = y
@@ -29,6 +35,7 @@ class DetectedObject:
             return False
         return True
 
+
 class Mother:
 
     def __init__(self):
@@ -40,16 +47,19 @@ class Mother:
         self.theta = 0.0
         self.possible_objects = []
 
-    def run(self):
-        object_target = None # the actual 
+    def run(self, x=None, y=None, theta=None):
+        object_target = None
         detected_object = None
         pickup_goal = None
-        rate = rospy.Rate(2)
-        last_target = PlannerTarget(x=2.2, y=0.2, theta=3.14 / 2, is_abort_action=False)
-        cancel = PlannerTarget(is_abort_action=True)
-        self.planner.publish(last_target)
+        rate = rospy.Rate(10)
+        if x is not None:
+            last_target = PlannerTarget(x=x, y=y, theta=theta, is_abort_action=False)
+            self.planner.publish(last_target)
         while not rospy.is_shutdown():
             rate.sleep()
+
+    def stop(self):
+        self.planner.publish(PlannerTarget(is_abort_action=True))
 
     def perception_callback(self, data):
         if self.x is None: # fix this properly!
@@ -91,9 +101,40 @@ class Mother:
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='MotherBrain™ (Run at your own risk)')
+    subparsers = parser.add_subparsers()
+
+    position_parser = subparsers.add_parser('goto', help='goto a position in the map')
+    position_parser.add_argument('x', type=float, help='target x coordinate, in meters')
+    position_parser.add_argument('y', type=float, help='target y coordinate, in meters')
+    position_parser.add_argument('theta', type=float, help='target theta coordinate, in radians')
+    position_parser.set_defaults(which='goto')
+
+    explore_parser = subparsers.add_parser('explore', help='first part of competion, exploring and mapping')
+    explore_parser.set_defaults(which='explore')
+
+    score_parser = subparsers.add_parser('score', help='second part of competion, score points!')
+    score_parser.set_defaults(which='score')
+
+    stop_parser = subparsers.add_parser('stop', help='send stop request to planner')
+    stop_parser.set_defaults(which='stop')
+
+    args = parser.parse_args()
+
     mother = Mother()
     rospy.Subscriber('objectPos_wheelcenter2', classifierObject, mother.perception_callback)
     rospy.Subscriber('position', PoseStamped, mother.position_callback)
     rospy.init_node('motherbrain')
-    mother.run()
+
+    x, y, theta = None, None, None
+    if args.which == 'goto':
+        x = args.x
+        y = args.y
+        theta = args.theta
+        mother.run(x=x, y=y, theta=theta)
+    elif args.which == 'stop':
+        mother.stop()
+    else:
+        raise NotImplementedError('Only goto implemented atm')
+
     rospy.spin()
