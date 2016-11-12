@@ -73,7 +73,7 @@ bool is_line(vector<tuple<float, float> > &points, int start, int end) {
 }
 
 /* Change to return bool if something was updated? */
-void Map::update_from_laser(std::vector<tuple<float, float> > scans, float x, float y, float theta) {
+bool Map::update_from_laser(vector<tuple<float, float> > scans, float x, float y, float theta) {
 
     /* 1: Filter out scans that are not new walls */
     vector<tuple<float, float> > filtered = vector<tuple<float, float> >();
@@ -93,6 +93,10 @@ void Map::update_from_laser(std::vector<tuple<float, float> > scans, float x, fl
 
     /* 2: Find line segments */
     /* Disclaimer, this might be buggy! */
+    if (filtered.size() < 5) {
+        return false;
+    }
+    bool res = false;
     int wall_start = 0;
     for (int i = 2; i < filtered.size(); i++) {
         if (euclidean(
@@ -109,6 +113,7 @@ void Map::update_from_laser(std::vector<tuple<float, float> > scans, float x, fl
                     get<1>(filtered[i-1]),
                 };
                 walls.push_back(w);
+                res = true;
             }
             wall_start = i + 1;
             i += 2;
@@ -123,7 +128,9 @@ void Map::update_from_laser(std::vector<tuple<float, float> > scans, float x, fl
             get<1>(filtered[filtered.size() - 1]),
         };
         walls.push_back(w);
+        res = true;
     }
+    return res;
 }
 
 bool Map::point_approx_on_wall(float x, float y) {
