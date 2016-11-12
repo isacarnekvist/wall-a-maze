@@ -131,8 +131,3 @@ bool point_approx_on_line(float x, float y, float x1, float y1, float x2, float 
 
     return true;
 }
-
-int main() {
-    Map map = Map();
-    cout << map.point_approx_on_wall(0.5, 0) << endl;
-}
