@@ -30,6 +30,7 @@ public:
     void odometry_callback(const geometry_msgs::Twist::ConstPtr &msg);
     void publish_pose_estimate();
     void publish_updated_obstacles();
+    float certainty;
 private:
     vector<tuple<float, float> > scans;
     ros::Publisher position_publisher;
@@ -43,6 +44,7 @@ private:
 };
 
 Localization::Localization(ros::NodeHandle &node_handle) {
+    certainty = 0.0;
     recieved_laser = false;
     recieved_odometry = false;
     position_publisher = node_handle.advertise<geometry_msgs::PoseStamped>("/position", 10);
@@ -50,12 +52,11 @@ Localization::Localization(ros::NodeHandle &node_handle) {
     obstacle_publisher = node_handle.advertise<geometry_msgs::Polygon>("/obstacles", 1000);
     map = Map();
     particle_filter = new ParticleFilter(
-        /* TODO Change these to be set from the map */
-        512,       /* Number of particles */
-        2.0,          /* x_min */
-        2.2,       /* x_max */
-        0.0,          /* y_min */
-        0.4,       /* y_max */
+        1048,       /* Number of particles */
+        map.min_x,
+        map.max_x,
+        map.min_y,
+        map.max_y,
         0,          /* theta_min */
         2 * M_PI    /* theta_max */
     );
@@ -72,7 +73,8 @@ void Localization::publish_pose_estimate() {
     for (int i = 0; i < scans.size(); i += 4) {
         some_scans_n_shit.push_back(scans[i]);
     }
-    particle_filter->resample(map, some_scans_n_shit);
+    certainty = particle_filter->resample(map, some_scans_n_shit);
+    if (certainty > 0.3) cout << "certainty: " << certainty << endl;
 
     /* Publish */
     geometry_msgs::PoseStamped pose;
@@ -128,11 +130,12 @@ void Localization::odometry_callback(const geometry_msgs::Twist::ConstPtr &msg) 
     } else {
         recieved_odometry = true;
     }
-    particle_filter->move(msg->linear.x, msg->angular.z, time_delta);
+    particle_filter->move(msg->linear.x, msg->angular.z, time_delta, certainty);
     odometry_stamp = ros::Time::now();
 }
 
 void Localization::laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) {
+    // TODO Store timestamp and publish certainty with this timestamp
     scans = vector<tuple<float, float> >();
     for (int degree = 0; degree < 360; degree++) {
         float distance = msg->ranges[degree];

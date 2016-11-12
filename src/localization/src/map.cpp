@@ -10,6 +10,10 @@ using namespace std;
 
 Map::Map() {
     walls = vector<Wall>();
+    this->min_x = INF;
+    this->max_x = -INF;
+    this->min_y = INF;
+    this->max_y = -INF;
     readWalls();
 }
 
@@ -77,6 +81,10 @@ void Map::readWalls() {
         }
         istringstream in (line);
         in >> x1 >> y1 >> x2 >> y2;
+        this->min_x = min(min(this->min_x, x1), x2);
+        this->max_x = max(max(this->max_x, x1), x2);
+        this->min_y = min(min(this->min_y, y1), y2);
+        this->max_y = max(max(this->max_y, y1), y2);
         Wall w = {x1, y1, x2, y2};
         walls.push_back(w);
     }

@@ -13,6 +13,10 @@ public:
     float distance(float x, float y, float angle) const;
     bool point_approx_on_wall(float x, float y);
     std::vector<Wall> walls;
+    float min_x;
+    float max_x;
+    float min_y;
+    float max_y;
 private:
     void readWalls();
 };
