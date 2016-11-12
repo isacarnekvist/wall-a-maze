@@ -12,6 +12,7 @@ public:
     Map();
     float distance(float x, float y, float angle) const;
     bool point_approx_on_wall(float x, float y);
+    void update_from_laser(std::vector<std::tuple<float, float> > scans, float x, float y, float theta);
     std::vector<Wall> walls;
     float min_x;
     float max_x;
