@@ -11,6 +11,7 @@ class Map {
 public:
     Map();
     float distance(float x, float y, float angle) const;
+    bool point_approx_on_wall(float x, float y);
     std::vector<Wall> walls;
 private:
     void readWalls();

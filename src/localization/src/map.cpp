@@ -13,6 +13,8 @@ Map::Map() {
     readWalls();
 }
 
+bool point_approx_on_line(float x, float y, float x1, float y1, float x2, float y2);
+
 float Map::distance(float x0, float y0, float angle) const {
     float ca = cos(angle);
     float sa = sin(angle);
@@ -47,6 +49,14 @@ float Map::distance(float x0, float y0, float angle) const {
     return min_dist;
 }
 
+bool Map::point_approx_on_wall(float x, float y) {
+    /* Checks if point (x, y) is on (or almost) on any wall in the map */
+    for (Wall &w : walls) {
+        if (point_approx_on_line(x, y, w.x1, w.y1, w.x2, w.y2)) return true;
+    }
+    return false;
+}
+
 void Map::readWalls() {
     const char *map_path = getenv("MAP_PATH");
     if (!map_path) {
@@ -71,4 +81,50 @@ void Map::readWalls() {
         walls.push_back(w);
     }
     myfile.close();
+}
+
+bool point_approx_on_line(float x, float y, float x1, float y1, float x2, float y2) {
+    /*
+     * Checks projection of point vertex on wall and wall normal
+     *
+     *                w (wall)
+     *              ^
+     *  w_norm     /
+     *    < _     /
+     *       - _ /
+     *          +---> v (point)
+     *       (0,0)
+     */
+
+    /* Consider points > 10 cm from wall as not on wall */
+    static const float tol = 0.1;
+    static const float ca = cos(M_PI / 2);
+    static const float sa = sin(M_PI / 2);
+
+    float wx = (x2 - x1);
+    float wy = (y2 - y1);
+    float wall_len = sqrt(wx * wx + wy * wy);
+    /* Make wall unit vector */
+    wx /= wall_len;
+    wy /= wall_len;
+    float vx = x - x1;
+    float vy = y - y1;
+
+    /* Check if within tolerance from wall */
+    float wall_proj = vx * wx + vy * wy;
+    if (wall_proj < -tol) return false;
+
+    float wnorm_x = ca * wx - sa * wy;
+    float wnorm_y = sa * wx + ca * wy;
+    float norm_proj = vx * wnorm_x + vy * wnorm_y;
+
+    if (norm_proj > tol or norm_proj < -tol) return false;
+    if (wall_proj > wall_len + tol) return false;
+
+    return true;
+}
+
+int main() {
+    Map map = Map();
+    cout << map.point_approx_on_wall(0.5, 0) << endl;
 }
