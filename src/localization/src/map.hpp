@@ -12,6 +12,10 @@ public:
     Map();
     float distance(float x, float y, float angle) const;
     std::vector<Wall> walls;
+    float min_x;
+    float max_x;
+    float min_y;
+    float max_y;
 private:
     void readWalls();
 };
