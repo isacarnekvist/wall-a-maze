@@ -1,4 +1,5 @@
 from __future__ import print_function
+import Queue
 from copy import deepcopy
 
 import numpy as np
@@ -103,7 +104,7 @@ class OccupancyGrid:
         return g
         
         
-def lines_to_grid(lines, cell_width=0.03, padding=0.4):
+def lines_to_grid(lines, cell_width=0.02, padding=0.4):
     x_max = -np.inf
     x_min = np.inf
     y_max = -np.inf
@@ -138,7 +139,7 @@ def shortest_path_bfs(g, start, goal):
     while c != start:
         c = preds[c]
         path.append(c)
-    return reversed(path)
+    return list(reversed(path))
 
 
 def euler_path_plan(x1, y1, x2, y2, grid, graph):
