@@ -10,7 +10,18 @@ using namespace std;
 
 Map::Map() {
     walls = vector<Wall>();
+    this->min_x = INF;
+    this->max_x = -INF;
+    this->min_y = INF;
+    this->max_y = -INF;
     readWalls();
+}
+
+bool point_approx_on_line(float x, float y, float x1, float y1, float x2, float y2);
+bool point_approx_on_line(float x, float y, float x1, float y1, float x2, float y2, float tol);
+
+float euclidean(float x1, float y1, float x2, float y2) {
+    return sqrt(pow(x1 - x2, 2) + pow(y1 - y2, 2));
 }
 
 float Map::distance(float x0, float y0, float angle) const {
@@ -47,6 +58,89 @@ float Map::distance(float x0, float y0, float angle) const {
     return min_dist;
 }
 
+/* end inclusive */
+bool is_line(vector<tuple<float, float> > &points, int start, int end) {
+    float x1 = get<0>(points[start]);
+    float y1 = get<1>(points[start]);
+    float x2 = get<0>(points[end]);
+    float y2 = get<1>(points[end]);
+    for (int i = start + 1; i < end; i++) {
+        if (!point_approx_on_line(get<0>(points[i]), get<1>(points[i]), x1, y1, x2, y2, 0.05)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* Change to return bool if something was updated? */
+bool Map::update_from_laser(vector<tuple<float, float> > scans, float x, float y, float theta) {
+
+    /* 1: Filter out scans that are not new walls */
+    vector<tuple<float, float> > filtered = vector<tuple<float, float> >();
+    /* The weird ordering is that we want to start the scan behind the robot,
+     * this is since new obstacles will be in front of the robot. This way we
+     * will not start to scan an object from its middle. */
+    for (int i = 45; i < scans.size() + 45; i++) {
+        tuple<float, float> &t = scans[i % scans.size()];
+        float alpha = get<0>(t);
+        float dist = get<1>(t);
+        float px = x + dist * cos(alpha + theta);
+        float py = y + dist * sin(alpha + theta);
+        if (!point_approx_on_wall(px, py)) {
+            filtered.push_back(make_tuple(px, py));
+        }
+    }
+
+    /* 2: Find line segments */
+    /* Disclaimer, this might be buggy! */
+    if (filtered.size() < 5) {
+        return false;
+    }
+    bool res = false;
+    int wall_start = 0;
+    for (int i = 2; i < filtered.size(); i++) {
+        if (euclidean(
+                get<0>(filtered[i-1]),
+                get<1>(filtered[i-1]),
+                get<0>(filtered[i]),
+                get<1>(filtered[i])) > 0.25 ||   /* Too long distance between segments */
+            !is_line(filtered, wall_start, i)) { /* ... or point outside line estimate */
+            if (i - wall_start > 4) {
+                Wall w = {
+                    get<0>(filtered[wall_start]),
+                    get<1>(filtered[wall_start]),
+                    get<0>(filtered[i-1]),
+                    get<1>(filtered[i-1]),
+                };
+                walls.push_back(w);
+                res = true;
+            }
+            wall_start = i + 1;
+            i += 2;
+            continue;
+        }
+    }
+    if (wall_start < filtered.size() - 4) {
+        Wall w = {
+            get<0>(filtered[wall_start]),
+            get<1>(filtered[wall_start]),
+            get<0>(filtered[filtered.size() - 1]),
+            get<1>(filtered[filtered.size() - 1]),
+        };
+        walls.push_back(w);
+        res = true;
+    }
+    return res;
+}
+
+bool Map::point_approx_on_wall(float x, float y) {
+    /* Checks if point (x, y) is on (or almost) on any wall in the map */
+    for (Wall &w : walls) {
+        if (point_approx_on_line(x, y, w.x1, w.y1, w.x2, w.y2)) return true;
+    }
+    return false;
+}
+
 void Map::readWalls() {
     const char *map_path = getenv("MAP_PATH");
     if (!map_path) {
@@ -67,8 +161,54 @@ void Map::readWalls() {
         }
         istringstream in (line);
         in >> x1 >> y1 >> x2 >> y2;
+        this->min_x = min(min(this->min_x, x1), x2);
+        this->max_x = max(max(this->max_x, x1), x2);
+        this->min_y = min(min(this->min_y, y1), y2);
+        this->max_y = max(max(this->max_y, y1), y2);
         Wall w = {x1, y1, x2, y2};
         walls.push_back(w);
     }
     myfile.close();
+}
+
+bool point_approx_on_line(float x, float y, float x1, float y1, float x2, float y2) {
+    return point_approx_on_line(x, y, x1, y1, x2, y2, 0.1);
+}
+
+bool point_approx_on_line(float x, float y, float x1, float y1, float x2, float y2, float tol) {
+    /*
+     * Checks projection of point vertex on wall and wall normal
+     *
+     *                w (wall)
+     *              ^
+     *  w_norm     /
+     *    < _     /
+     *       - _ /
+     *          +---> v (point)
+     *       (0,0)
+     */
+    static const float ca = cos(M_PI / 2);
+    static const float sa = sin(M_PI / 2);
+
+    float wx = (x2 - x1);
+    float wy = (y2 - y1);
+    float wall_len = sqrt(wx * wx + wy * wy);
+    /* Make wall unit vector */
+    wx /= wall_len;
+    wy /= wall_len;
+    float vx = x - x1;
+    float vy = y - y1;
+
+    /* Check if within tolerance from wall */
+    float wall_proj = vx * wx + vy * wy;
+    if (wall_proj < -tol) return false;
+
+    float wnorm_x = ca * wx - sa * wy;
+    float wnorm_y = sa * wx + ca * wy;
+    float norm_proj = vx * wnorm_x + vy * wnorm_y;
+
+    if (norm_proj > tol or norm_proj < -tol) return false;
+    if (wall_proj > wall_len + tol) return false;
+
+    return true;
 }

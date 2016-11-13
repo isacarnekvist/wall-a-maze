@@ -19,15 +19,19 @@ using namespace std;
 default_random_engine random_engine;
 normal_distribution<float> normal_sampler (0, 1);
 
-void Particle::move(float linear, float angular, float delta_seconds) {
+void Particle::move(float linear, float angular, float delta_seconds, float certainty) {
     /* Here are parameters that probably will need tuning! */
-    float k_linear  = (0.02 * abs(linear) + 0.3 * abs(angular) + 0.1);
-    float k_angular = (0.03 * abs(linear) + 0.6 * abs(angular) + 0.3);
+    float k_linear  = (
+        0.02 * abs(linear) +
+        0.03 * abs(angular) +
+        0.75 * max(0.3 - certainty, 0.0)
+    );
+    float k_angular = (0.05 * abs(linear) + 0.01 * abs(angular) + 0.1);
 
     /* Update with noise! */
-    theta += (angular + k_angular * normal_sampler(random_engine)) * delta_seconds;
-    x += (linear * cos(theta) + k_linear * normal_sampler(random_engine)) * delta_seconds;
-    y += (linear * sin(theta) + k_linear * normal_sampler(random_engine)) * delta_seconds;
+    theta += (angular + k_angular * normal_sampler(random_engine)) * delta_seconds * 1.35;
+    x += (linear * cos(theta) + k_linear * normal_sampler(random_engine)) * delta_seconds * 1.15;
+    y += (linear * sin(theta) + k_linear * normal_sampler(random_engine)) * delta_seconds * 1.15;
 }
 
 
@@ -69,7 +73,8 @@ float Particle::likelihood(const Map &map, const vector<tuple<float, float> > &s
     for (int i = 0; i < n_look_at; i++) {
         discrepancy_sum += discrepancies[i];
     }
-    return exp(- 8 * discrepancy_sum / n_look_at);
+    this->latest_score = exp(-12 * discrepancy_sum / n_look_at);
+    return this->latest_score;
 }
 
 void Particle::printParticle() {
@@ -85,19 +90,26 @@ ParticleFilter::ParticleFilter(
     sampleParticles(n_particles);
 }
 
-void ParticleFilter::move(float linear, float angular, float delta_seconds) {
+void ParticleFilter::move(float linear, float angular, float delta_seconds, float certainty) {
     for (Particle &p : particles) {
-        p.move(linear, angular, delta_seconds);
+        p.move(linear, angular, delta_seconds, certainty);
     }
 }
 
-void ParticleFilter::resample(const Map &map, const vector<tuple<float, float> > &scans) {
+float ParticleFilter::resample(const Map &map, const vector<tuple<float, float> > &scans) {
     vector<float> probabilities (n_particles);
     vector<Particle> old_particles = particles;
     for (int i = 0; i < n_particles; i++) {
         probabilities[i] = particles[i].likelihood(map, scans);
     }
-    int n_noise_particles = 2;
+
+    float measure = 0.0;
+    for (Particle &p : particles) {
+        measure += p.latest_score;
+    }
+    measure /= n_particles;
+
+    int n_noise_particles = 128 * max((0.03 - measure), 0.0) / 0.03;
     vector<int> resample_counts = multinomial_sample(n_particles - n_noise_particles, probabilities);
     particles = vector<Particle>();
     for (int i = 0; i < n_particles; i++) {
@@ -106,6 +118,9 @@ void ParticleFilter::resample(const Map &map, const vector<tuple<float, float> >
         }
     }
     sampleParticles(n_noise_particles);
+
+    // Return certainty in current estimate
+    return measure;
 }
 
 void ParticleFilter::sampleParticles(int n_particles) {
