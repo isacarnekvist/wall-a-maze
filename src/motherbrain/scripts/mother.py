@@ -48,6 +48,7 @@ class Mother:
         self.possible_objects = []
 
     def run(self, x=None, y=None, theta=None):
+        self.stop()
         object_target = None
         detected_object = None
         pickup_goal = None
