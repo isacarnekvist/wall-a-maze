@@ -49,8 +49,6 @@ class Planner:
         self.has_target = True
         rate = rospy.Rate(100)
 
-        initial_rotation_done = False
-
         # Convenience adjustments
         while not 0 <= self.theta <= 2 * np.pi:
             self.theta += -np.sign(self.theta) * 2 * np.pi
@@ -139,6 +137,11 @@ class Planner:
 
     def obstacles_callback(self, data):
         print('Collecting obstacles')
+        # TODO:
+        # Call self with cancel request
+        # Store goals as instance variables instead
+        # Run the below code to update graph and grid
+        # Resend goals after graph and grid are updated
         lines = []
         for i in range(len(data.points) / 2):
             p1 = data.points[2 * i]
