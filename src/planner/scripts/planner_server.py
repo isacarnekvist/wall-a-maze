@@ -2,6 +2,7 @@
 from __future__ import print_function
 
 import sys
+from copy import deepcopy
 
 import tf
 import roslib
@@ -32,6 +33,7 @@ class Planner:
     def __init__(self):
         self.grid = None
         self.graph = None
+        self.goal = None
         self.x = 0.0
         self.y = 0.0
         self.theta = 0.0
@@ -40,7 +42,9 @@ class Planner:
         print('Started planner server')
 
     def target_callback(self, goal):
-        if goal.is_abort_action:
+        self.stop()
+        self.goal = goal
+        if self.goal.is_abort_action:
             print('target was canceled')
             self.has_target = False
             self.stop()
@@ -52,16 +56,18 @@ class Planner:
         # Convenience adjustments
         while not 0 <= self.theta <= 2 * np.pi:
             self.theta += -np.sign(self.theta) * 2 * np.pi
-        while not 0 <= goal.theta <= 2 * np.pi:
-            goal.theta += -np.sign(goal.theta) * 2 * np.pi
+        while not 0 <= self.goal.theta <= 2 * np.pi:
+            self.goal.theta += -np.sign(self.goal.theta) * 2 * np.pi
 
         if self.grid is None or self.graph is None:
             self.has_target = False
             raise ValueError('Have not recieved occupancy grid!, ignoring request')
             return
-        plan = euler_path_plan(self.x, self.y, goal.x, goal.y, self.grid, self.graph)
+        print('requesting euler plan...')
+        plan = euler_path_plan(self.x, self.y, self.goal.x, self.goal.y, self.grid, self.graph)
+        print('executing euler plan')
         if len(plan) == 1:
-            current_target = self.line_iterator(*plan[0], final_rotation=goal.theta)
+            current_target = self.line_iterator(*plan[0], final_rotation=self.goal.theta)
         else:
             current_target = self.line_iterator(*plan[0])
         plan = plan[1:]
@@ -72,8 +78,8 @@ class Planner:
             except StopIteration:
                 if plan:
                     if len(plan) == 1:
-                        print('plan length 1, final rot:', goal.theta)
-                        current_target = self.line_iterator(*plan[0], final_rotation=goal.theta)
+                        print('plan length 1, final rot:', self.goal.theta)
+                        current_target = self.line_iterator(*plan[0], final_rotation=self.goal.theta)
                     else:
                         current_target = self.line_iterator(*plan[0])
                     plan = plan[1:]
@@ -82,7 +88,9 @@ class Planner:
                     break
             rate.sleep()
         self.stop()
+        # Redo these two to be only one?
         self.has_target = False
+        self.goal = None
 
     def line_iterator(self, x, y, final_rotation=None):
         # Initial rotation
@@ -94,7 +102,7 @@ class Planner:
             yield
         self.stop()
 
-        sleep(0.5)
+        sleep(1.5)
 
         # Move along line
         while np.sqrt((x - self.x) ** 2 + (y - self.y) **2) > 0.075:
@@ -102,13 +110,13 @@ class Planner:
             yield
         self.stop()
 
-        sleep(0.5)
+        sleep(1.0)
 
         if final_rotation is not None:
             for _ in self.rotation_iterator(final_rotation):
                 yield
             self.stop()
-            sleep(0.5)
+            sleep(1.0)
 
     def rotation_iterator(self, theta):
         msg = Twist()
@@ -131,14 +139,20 @@ class Planner:
         target_theta = atan2(y - self.y, x - self.x)
         theta_error = closest_theta_adjustment(self.theta, target_theta)
         msg = Twist()
-        msg.linear.x = 0.15
+        msg.linear.x = 0.20
         msg.angular.z = theta_error * 0.5 # will be rate dependent
         self.wheels.publish(msg)
 
     def obstacles_callback(self, data):
         print('Collecting obstacles')
+        self.stop()
+        self.has_target = False
+        if self.goal:
+            print('copying previous goal and recreating grid/map')
+            previous_goal = deepcopy(self.goal)
+        else:
+            previous_goal = None
         # TODO:
-        # Call self with cancel request
         # Store goals as instance variables instead
         # Run the below code to update graph and grid
         # Resend goals after graph and grid are updated
@@ -148,8 +162,11 @@ class Planner:
             p2 = data.points[2 * i + 1]
             lines.append((p1.x, p1.y, p2.x, p2.y))
         self.grid = lines_to_grid(lines)
-        self.grid.expand_obstacles(0.18)
+        self.grid.expand_obstacles(0.19)
         self.graph = self.grid.to_graph()
+        if previous_goal is not None:
+            print('re-sending previous target')
+            self.target_callback(previous_goal)
 
     def position_callback(self, data):
         self.x = data.pose.position.x
