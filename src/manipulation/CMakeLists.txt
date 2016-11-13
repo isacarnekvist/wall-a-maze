@@ -13,10 +13,24 @@ find_package(catkin REQUIRED COMPONENTS
   genmsg 
   actionlib_msgs 
   actionlib
+  message_generation
 )
 
+
 add_action_files(DIRECTORY action FILES PickUpObject.action)
-generate_messages(DEPENDENCIES actionlib_msgs geometry_msgs)
+
+add_message_files(
+  FILES
+  Manipulation.msg
+)
+
+
+generate_messages(
+  DEPENDENCIES
+  geometry_msgs
+  std_msgs
+  actionlib_msgs
+)
 
 
 ###################################
@@ -29,10 +43,10 @@ generate_messages(DEPENDENCIES actionlib_msgs geometry_msgs)
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-#  INCLUDE_DIRS include
-#  LIBRARIES manipulation
-#  CATKIN_DEPENDS pyuarm roscpp rospy std_msgs uarm
-#  DEPENDS system_lib
+  INCLUDE_DIRS include
+  LIBRARIES manipulation
+  CATKIN_DEPENDS roscpp rospy std_msgs uarm message_runtime
+  DEPENDS system_lib
 )
 
 ###########

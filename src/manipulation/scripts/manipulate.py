@@ -8,7 +8,8 @@ import numpy as np
 from uarm.srv import *
 from sensor_msgs.msg import JointState
 from geometry_msgs.msg import Point, PointStamped
-from std_msgs.msg import Header
+from std_msgs.msg import Header, String
+from manipulation.msg import Manipulation
 
 
 
@@ -18,7 +19,7 @@ class Manipulate():
 		rospy.init_node('move_arm_client')
 	
 		rospy.Subscriber("/objectPos_wheelcenter", PointStamped, self.goal_callback)
-
+		rospy.Subscriber("/mother/manipulation", Manipulation, self.mother_callback)
 		rospy.Subscriber("/uarm/joint_state", JointState , self.joint_callback)
 		 
 		# Wait for transform
@@ -38,11 +39,22 @@ class Manipulate():
 		rospy.wait_for_service('/uarm/convert_to_joints')
 		self.joint_service = rospy.ServiceProxy('/uarm/convert_to_joints', ConvertToJoints)
 		
+		#-- Variables --#
+		
+		# Goal positions
+		self.pickupPos_arm = Point()
+		self.placePos_arm = Point()
+		self.pickupPos_wheel = Point()
+		self.placePos_wheel = Point()
+		self.job = None
+		self.drop = False
+
 		# Other
-		self.goalPos_wheel = PointStamped()
-		self.goalPosStamped = None
-	
-		self.eefPos_current = JointState()
+		self.inOperation = False
+		
+		
+		# EEF position
+		self.eefJointPos_current = JointState()
 		
 		# Define move parameters 
 		self.move_mode = 0	# (0 absolute,1 realtive)
@@ -62,16 +74,103 @@ class Manipulate():
 		
 		# Initial EEF position
 		self.initPos_arm = Point(1.0, 12.0, 14.0)	# in arm frame	
-
+		self.carryOutPos_arm = Point(1.0, 12.0, 18.0)
+		
 		rate = rospy.Rate(10) #10hz
 	
 		while not rospy.is_shutdown():
-			self.moveSteps()
+			self.toInitPos()
+			self.check_job()
 			rate.sleep
 			
 		rospy.spin()
 	
 	
+	def toInitPos(self):
+		# Extend to only do once and move up first --> need eef pos_arm
+		if self.inOperation == False:
+			initial_state = self.moveToPos_client(self.initPos_arm, self.move_mode, self.moveDuration_abs, self.interpol_linear) 
+			print("Moved to resting position",initial_state)
+			
+	
+	
+	def check_job(self):
+		self.isPickedUp = False
+		
+		if self.job == None:
+			print "No job received"
+			return
+		else:
+			while self.job is not 'cancel':
+				self.inOperation == True
+				
+				if self.isPickedUp == False:
+					self.pickup()	# Publish message inside that it was picked up	
+				elif self.job is 'reposition':
+					self.reposition()
+				elif self.job is 'carryout':
+					self.carryout()
+				else:
+					print "Job is neither 'reposition' nor 'carryout' ! "
+		
+					
+	def reposition(self):
+		# Move above placing position
+		abovePlace_pos = Point(self.placePos_arm.x, self.place_arm.y, self.placePos_arm.z + 10.0)			
+	
+		abovePlace_state = self.moveToPos_client(abovePlace_pos, self.move_mode, self.moveDuration_abs, self.interpol_linear)
+		print("Moved above drop place", abovePlace_state)
+		
+		# Place object
+		place_state = self.moveToPos_client(self.placePos_arm, self.move_mode, self.moveDuration_abs, self.interpol_linear)
+		print("Placed object at", place_state)
+		
+		if place_state.error == False:
+			self.isPickedUp = False
+			self.inOperation = False
+			
+	
+	def carryout(self):
+		# Move to carryout position
+		carryOut_state = self.moveToPos_client(self.carryOutPos_arm, self.move_mode, self.moveDuration_abs, self.interpol_linear)		
+		
+		# Drop object when asked so by mother a few centimeters in front of the robot
+		dropPos = self.carryOutPos_arm
+		dropPos.y = dropPos.y + 10.0
+		while self.inOperation == True:
+			if self.drop == True:
+				drop_state = self.moveToPos_client(dropPos, self.move_mode, self.moveDuration_abs, self.interpol_linear)
+				if drop_state.error == False:
+					self.inOperation = False
+					print "Dropped object ! "
+		
+	
+	def mother_callback(self, data):
+		pickupPos = PointStamped()
+		placePos = PointStamped()
+		
+		self.pickupPos_wheel = data.pickupPos.point
+		self.placePos_wheel = data.placePos.point
+		
+		pickupPos = self.transform_wheelToArm(data.pickupPos)
+		self.pickupPos_arm = pickupPos.point
+		placePos = self.transform_wheelToArm(data.placePos)
+		self.placePos_arm = placePos.point
+		
+		# Rescale to cm
+		scale = 100.0 # meter to cm
+		self.pickupPos_arm.x = self.pickupPos_arm.x*scale	
+		self.pickupPos_arm.y = self.pickupPos_arm.y*scale
+		self.pickupPos_arm.z = self.pickupPos_arm.z*scale
+		
+		self.placePos_arm.x = self.placePos_arm.x*scale	
+		self.placePos_arm.y = self.placePos_arm.y*scale
+		self.placePos_arm.z = self.placePos_arm.z*scale
+		
+		self.job = data.job
+		
+		self.drop = data.drop
+		
 	
 	def goal_callback(self, data):
 		self.goalPos_wheel = data
@@ -84,7 +183,7 @@ class Manipulate():
 
 	
 	def joint_callback(self, data):
-		self.eefPos_current = data
+		self.eefJointPos_current = data
 		
 
 	def transform_wheelToArm(self, data):
@@ -203,12 +302,12 @@ class Manipulate():
 		# Compute offset in joint space
 		goalPos_joints = self.convertToJoints_client(position, self.eef_orientation, self.check_limits)		
 		
-		offset_j0 = goalPos_joints.j0 - self.eefPos_current.position[0]
-		offset_j1 = goalPos_joints.j1 - self.eefPos_current.position[1]
-		offset_j2 = goalPos_joints.j2 - self.eefPos_current.position[2]
-		offset_j3 = goalPos_joints.j3 - self.eefPos_current.position[3]
+		offset_j0 = goalPos_joints.j0 - self.eefJointPos_current.position[0]
+		offset_j1 = goalPos_joints.j1 - self.eefJointPos_current.position[1]
+		offset_j2 = goalPos_joints.j2 - self.eefJointPos_current.position[2]
+		offset_j3 = goalPos_joints.j3 - self.eefJointPos_current.position[3]
 		
-		print "Servo angles are reported to be {}".format(self.eefPos_current.position)
+		print "Servo angles are reported to be {}".format(self.eefJointPos_current.position)
 		print "Goal joint position is {}".format(goalPos_joints)		
 
 		
@@ -235,14 +334,14 @@ class Manipulate():
 			offset_j2 = goalPos_joints.j2 - state.j2
 
 				
-		print "Final reported position is {}".format(self.eefPos_current.position)	
+		print "Final reported position is {}".format(self.eefJointPos_current.position)	
 		print "Goal position is {}".format(goalPos_joints)
 			
 		return state
 					
 				
-	def moveToGoal(self, goalPos):
-		aboveGoal_pos = Point(goalPos.x, goalPos.y, self.initPos_arm.z)			
+	def pickup(self):
+		aboveGoal_pos = Point(self.pickupPos_arm.x, self.pickupPos_arm.y, self.pickupPos_arm.z + 10.0)			
 	
 		aboveGoal_state = self.moveToPos_client(aboveGoal_pos, self.move_mode, self.moveDuration_abs, self.interpol_linear)
 		print("Moved above goal", aboveGoal_state)
@@ -251,7 +350,7 @@ class Manipulate():
 	
 		# To ABOVEGOAL CLOSER position
 		'''
-		aboveGoalClose_pos = Point(goalPos.x, goalPos.y, goalPos.z+2.0)			
+		aboveGoalClose_pos = Point(pickupPos_arm.x, pickupPos_arm.y, pickupPos_arm.z+2.0)			
 
 		aboveGoalClose_state = self.moveToPos_control(aboveGoalClose_pos)
 		print("Moved close above goal", aboveGoalClose_state)
@@ -259,16 +358,18 @@ class Manipulate():
 		'''
 		
 		# Move down
-		#print "Sending eef to target {}".format(goalPos)
-		print "Sending eef to target {}".format(self.goalPos_wheel.point)
-		#atGoal_state = self.moveToPos_control(goalPos)
+		#print "Sending eef to target {}".format(pickupPos_arm)
+		print "Sending eef to target {}".format(self.pickupPos_wheel)
+		#atGoal_state = self.moveToPos_control(pickupPos_arm)
 		
 		# Modify goal pos to go to lower z
-		goalPos.z = goalPos.z-2.0
-		#atGoal_state = self.moveToPos_client(goalPos,self.move_mode, self.moveDuration_abs, self.interpol_linear)
-		atGoal_state = self.moveToJointPos_control(goalPos)
-		
+		pickupPos_arm.z = pickupPos_arm.z-2.0
+		#atGoal_state = self.moveToPos_client(pickupPos_arm,self.move_mode, self.moveDuration_abs, self.interpol_linear)
+		atGoal_state = self.moveToJointPos_control(pickupPos_arm)
 		print("Moved to target", atGoal_state)
+		
+		if atGoal_state.error == False:
+			self.isPickedUp = True
 		
 		'''
 		atGoal_stamped = PointStamped()
@@ -279,7 +380,16 @@ class Manipulate():
 		'''
 		
 		rospy.sleep(2.0)
+		
+		# Turn on pump
+		self.pump_control(True)
 	
+		# Move back up
+		aboveGoal_state = self.moveToPos_client(aboveGoal_pos, self.move_mode, self.moveDuration_abs, self.interpol_linear)
+		
+		
+
+		
 		return atGoal_state
 		
 		
@@ -290,8 +400,7 @@ class Manipulate():
 		
 		# To Resting position
 		
-		initial_state = self.moveToPos_client(self.initPos_arm, self.move_mode, self.moveDuration_abs, self.interpol_linear) 
-		print("Moved to resting position",initial_state)
+		
 		#rospy.sleep(2.0)
 
  		if self.goalPosStamped is None:
@@ -310,7 +419,7 @@ class Manipulate():
 		# Turn ON PUMP
 		
 		# CRITERIA??
-		self.pump_control(True)
+		
 		
 		# Move back to initial in two steps
 		aboveGoal_pos = Point(goalPos_current.x, goalPos_current.y, self.initPos_arm.z)
