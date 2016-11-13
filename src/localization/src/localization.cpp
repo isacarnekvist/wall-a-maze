@@ -14,6 +14,8 @@
 #include <geometry_msgs/Polygon.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <planner/PlannerStatus.h>
+#include <visualization_msgs/Marker.h>
+#include <visualization_msgs/MarkerArray.h>
 
 #include "map.hpp"
 #include "stats.hpp"
@@ -29,6 +31,7 @@ public:
     void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg);
     void odometry_callback(const geometry_msgs::Twist::ConstPtr &msg);
     void publish_pose_estimate();
+    void publish_map_visualization();
     void publish_updated_obstacles();
     float certainty;
 private:
@@ -36,6 +39,7 @@ private:
     ros::Publisher position_publisher;
     ros::Publisher particle_publisher;
     ros::Publisher obstacle_publisher;
+    ros::Publisher map_publisher;
     Map map;
     ParticleFilter *particle_filter; /* Doesn't work without '*' and new */
     bool recieved_laser;
@@ -50,6 +54,7 @@ Localization::Localization(ros::NodeHandle &node_handle) {
     position_publisher = node_handle.advertise<geometry_msgs::PoseStamped>("/position", 10);
     particle_publisher = node_handle.advertise<sensor_msgs::PointCloud>("/particles", 10);
     obstacle_publisher = node_handle.advertise<geometry_msgs::Polygon>("/obstacles", 1000);
+    map_publisher = node_handle.advertise<visualization_msgs::MarkerArray>("/obstacles_visual", 10);
     map = Map();
     particle_filter = new ParticleFilter(
         1048,       /* Number of particles */
@@ -134,6 +139,53 @@ void Localization::publish_updated_obstacles() {
     obstacle_publisher.publish(res);
 }
 
+void Localization::publish_map_visualization() {
+    visualization_msgs::MarkerArray all_markers;
+    visualization_msgs::Marker wall_marker;
+    wall_marker.header.frame_id = "map";
+    wall_marker.header.stamp = ros::Time();
+    wall_marker.ns = "world";
+    wall_marker.type = visualization_msgs::Marker::CUBE;
+    wall_marker.action = visualization_msgs::Marker::ADD;
+    wall_marker.scale.y = 0.01;
+    wall_marker.scale.z = 0.2;
+    wall_marker.color.a = 1.0;
+    wall_marker.color.r = (255.0/255.0);
+    wall_marker.color.g = (0.0/255.0);
+    wall_marker.color.b = (0.0/255.0);
+    wall_marker.pose.position.z = 0.2;
+
+    int wall_id = 0;
+    for (Wall &w : map.walls) {
+
+        // angle and distance
+        double angle = atan2(w.y2 - w.y1, w.x2 - w.x1);
+        double dist = sqrt(pow(w.x1 - w.x2,2) + pow(w.y1 - w.y2,2));
+
+        // set pose
+        wall_marker.scale.x = std::max(0.01,dist);
+        wall_marker.pose.position.x = (w.x1+w.x2)/2;
+        wall_marker.pose.position.y = (w.y1+w.y2)/2;
+        //wall_marker.text=line_stream.str();
+        tf::Quaternion quat; quat.setRPY(0.0,0.0,angle);
+        tf::quaternionTFToMsg(quat, wall_marker.pose.orientation);
+
+        if (wall_id > 13) {
+            wall_marker.color.r = (0.0/255.0);
+            wall_marker.color.g = (255.0/255.0);
+            wall_marker.color.b = (0.0/255.0);
+        }
+
+        //// add to array
+        wall_marker.id = wall_id;
+        all_markers.markers.push_back(wall_marker);
+        wall_id++;
+    }
+
+    // Main loop.
+    map_publisher.publish(all_markers);
+}
+
 void Localization::odometry_callback(const geometry_msgs::Twist::ConstPtr &msg) {
     float time_delta = 0.0;
     if (recieved_odometry) {
@@ -187,6 +239,7 @@ int main(int argc, char **argv) {
         ros::spinOnce();
         rate.sleep();
         localization.publish_pose_estimate();
+        localization.publish_map_visualization();
         if (!temp_updated_map) {
             localization.publish_updated_obstacles(); /* Move this so that it publishes when updated! */
             temp_updated_map = true;
