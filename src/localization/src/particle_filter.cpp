@@ -23,8 +23,8 @@ void Particle::move(float linear, float angular, float delta_seconds, float cert
     /* Here are parameters that probably will need tuning! */
     float k_linear  = (
         0.02 * abs(linear) +
-        0.03 * abs(angular) +
-        0.75 * max(0.3 - certainty, 0.0)
+        0.01 * abs(angular) +
+        0.75 * max(0.3 - certainty, 0.0) + 0.1
     );
     float k_angular = (0.05 * abs(linear) + 0.01 * abs(angular) + 0.1);
 
@@ -109,7 +109,7 @@ float ParticleFilter::resample(const Map &map, const vector<tuple<float, float> 
     }
     measure /= n_particles;
 
-    int n_noise_particles = 128 * max((0.03 - measure), 0.0) / 0.03;
+    int n_noise_particles = 0;
     vector<int> resample_counts = multinomial_sample(n_particles - n_noise_particles, probabilities);
     particles = vector<Particle>();
     for (int i = 0; i < n_particles; i++) {
