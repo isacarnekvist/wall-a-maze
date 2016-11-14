@@ -96,27 +96,28 @@ class Manipulate():
 	
 	def check_job(self):
 		self.isPickedUp = False
+		self.inOperation = True
 		
 		if self.job == None:
+			self.inOperation = False
 			print "No job received"
 			return
 		else:
-			while self.job is not 'cancel':
-				self.inOperation == True
+			while self.job != 'cancel' and self.inOperation == True:
 				
 				if self.isPickedUp == False:
 					self.pickup()	# Publish message inside that it was picked up	
-				elif self.job is 'reposition':
+				elif self.job == 'reposition':
 					self.reposition()
-				elif self.job is 'carryout':
+				elif self.job =='carryout':
 					self.carryout()
 				else:
-					print "Job is neither 'reposition' nor 'carryout' ! "
+					print "Job is neither 'reposition' nor 'carryout' but '{}' ! ".format(self.job)
 		
 					
 	def reposition(self):
 		# Move above placing position
-		abovePlace_pos = Point(self.placePos_arm.x, self.place_arm.y, self.placePos_arm.z + 10.0)			
+		abovePlace_pos = Point(self.placePos_arm.x, self.placePos_arm.y, self.placePos_arm.z + 10.0)			
 	
 		abovePlace_state = self.moveToPos_client(abovePlace_pos, self.move_mode, self.moveDuration_abs, self.interpol_linear)
 		print("Moved above drop place", abovePlace_state)
@@ -126,6 +127,7 @@ class Manipulate():
 		print("Placed object at", place_state)
 		
 		if place_state.error == False:
+			self.pump_control(False)
 			self.isPickedUp = False
 			self.inOperation = False
 			
@@ -146,30 +148,33 @@ class Manipulate():
 		
 	
 	def mother_callback(self, data):
-		pickupPos = PointStamped()
-		placePos = PointStamped()
+		if data is not None:
+			#pickupPos = PointStamped()
+			#placePos = PointStamped()
 		
-		self.pickupPos_wheel = data.pickupPos.point
-		self.placePos_wheel = data.placePos.point
+			self.pickupPos_wheel = data.pickupPos.point
+			self.placePos_wheel = data.placePos.point
 		
-		pickupPos = self.transform_wheelToArm(data.pickupPos)
-		self.pickupPos_arm = pickupPos.point
-		placePos = self.transform_wheelToArm(data.placePos)
-		self.placePos_arm = placePos.point
+			pickupPos = self.transform_wheelToArm(data.pickupPos)
+			self.pickupPos_arm = pickupPos.point
+			placePos = self.transform_wheelToArm(data.placePos)
+			self.placePos_arm = placePos.point
 		
-		# Rescale to cm
-		scale = 100.0 # meter to cm
-		self.pickupPos_arm.x = self.pickupPos_arm.x*scale	
-		self.pickupPos_arm.y = self.pickupPos_arm.y*scale
-		self.pickupPos_arm.z = self.pickupPos_arm.z*scale
+			# Rescale to cm
+			scale = 100.0 # meter to cm
+			self.pickupPos_arm.x = self.pickupPos_arm.x*scale	
+			self.pickupPos_arm.y = self.pickupPos_arm.y*scale
+			self.pickupPos_arm.z = self.pickupPos_arm.z*scale
 		
-		self.placePos_arm.x = self.placePos_arm.x*scale	
-		self.placePos_arm.y = self.placePos_arm.y*scale
-		self.placePos_arm.z = self.placePos_arm.z*scale
+			self.placePos_arm.x = self.placePos_arm.x*scale	
+			self.placePos_arm.y = self.placePos_arm.y*scale
+			self.placePos_arm.z = self.placePos_arm.z*scale
 		
-		self.job = data.job
+			self.job = data.job
 		
-		self.drop = data.drop
+			self.drop = data.drop
+		else:
+			print "Mother topic empty"
 		
 	
 	def goal_callback(self, data):
@@ -339,36 +344,55 @@ class Manipulate():
 			
 		return state
 					
+			
+	def absoluteFromDifference(self, goal, current):
+		offsetX = goal.x - current.x
+		offsetY = goal.y - current.y
+		offsetZ = goal.z - current.z
+		print "Offsets in x, y, z are {}, {}, {}".format(offsetX, offsetY, offsetZ)
+		
+		newgoal = Point(goal.x + offsetX, goal.y+offsetY, goal.z+offsetZ)
+		return newgoal
+		
 				
 	def pickup(self):
-		aboveGoal_pos = Point(self.pickupPos_arm.x, self.pickupPos_arm.y, self.pickupPos_arm.z + 10.0)			
+		aboveGoal_pos = Point(self.pickupPos_arm.x, self.pickupPos_arm.y, self.pickupPos_arm.z + 4.0)			
 	
 		aboveGoal_state = self.moveToPos_client(aboveGoal_pos, self.move_mode, self.moveDuration_abs, self.interpol_linear)
 		print("Moved above goal", aboveGoal_state)
-		#rospy.sleep(2.0)
-		#input("continue")
 	
-		# To ABOVEGOAL CLOSER position
-		'''
-		aboveGoalClose_pos = Point(pickupPos_arm.x, pickupPos_arm.y, pickupPos_arm.z+2.0)			
-
-		aboveGoalClose_state = self.moveToPos_control(aboveGoalClose_pos)
-		print("Moved close above goal", aboveGoalClose_state)
-		rospy.sleep(2.0)
-		'''
 		
 		# Move down
 		#print "Sending eef to target {}".format(pickupPos_arm)
 		print "Sending eef to target {}".format(self.pickupPos_wheel)
 		#atGoal_state = self.moveToPos_control(pickupPos_arm)
 		
+		# Correct position above robot
+		pickupPos_high_new = self.absoluteFromDifference(self.pickupPos_arm, aboveGoal_state.position)
+		aboveGoal_state = self.moveToPos_client(pickupPos_high_new, self.move_mode, self.moveDuration_abs, self.interpol_linear)
+		
 		# Modify goal pos to go to lower z
-		pickupPos_arm.z = pickupPos_arm.z-2.0
-		#atGoal_state = self.moveToPos_client(pickupPos_arm,self.move_mode, self.moveDuration_abs, self.interpol_linear)
-		atGoal_state = self.moveToJointPos_control(pickupPos_arm)
+		pickupPos_arm_low = pickupPos_high_new
+		pickupPos_arm_low.z = self.pickupPos_arm.z-1.0
+		
+		# Move down with corrected x,y
+		atGoal_state = self.moveToPos_client(pickupPos_arm_low,self.move_mode, self.moveDuration_abs, self.interpol_linear)
+		
+		
+		#-- Move absolute to reduce offset --#
+		atGoal_state = self.moveToPos_client(pickupPos_arm_low,self.move_mode, self.moveDuration_abs, self.interpol_linear)
+		
+		offsetX = pickupPos_arm_low.x - atGoal_state.position.x
+		offsetY = pickupPos_arm_low.y - atGoal_state.position.y
+		offsetZ = pickupPos_arm_low.z - atGoal_state.position.z
+		print "New Offsets in x, y, z are {}, {}, {}".format(offsetX, offsetY, offsetZ)
+		
+		#atGoal_state = self.moveToJointPos_control(pickupPos_arm_low)
 		print("Moved to target", atGoal_state)
 		
+		
 		if atGoal_state.error == False:
+			print "Changed pickup status to picked up !"
 			self.isPickedUp = True
 		
 		'''
