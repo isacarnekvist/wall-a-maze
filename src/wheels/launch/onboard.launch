@@ -22,7 +22,7 @@
 	
 	<node name="laser_broadcaster" pkg="localization" type="laser_broadcaster.py" />
 	<node name="robot_broadcaster" pkg="localization" type="robot_broadcaster.py" />
-	<node name="localization" pkg="localization" type="localization" />
+	<node name="localization" pkg="localization" type="localization" output="screen"/>
 	
 	<!-- Laser scanner -->
 	<include file="$(find wheels)/launch/rplidar.launch"/>
@@ -31,12 +31,12 @@
 	<include file="$(find wheels)/launch/controller.launch"/>
 
 	<!-- Planner -->
-	<node name="planner" pkg="planner" type="planner_server.py" />
+	<node name="planner" pkg="planner" type="planner_server.py" output="screen"/>
 
 	<!-- UArm -->
-	<include file="$(find uarm)/launch/kth_uarm.launch"/>
-	<node name="arm_broadcaster" pkg="manipulation" type="arm_broadcaster.py" />
-	<!--node name="manipulation" pkg="manipulation" type="move_arm_client_class.py" -->
+	<!-- include file="$(find uarm)/launch/kth_uarm.launch" -->
+	<!-- node name="arm_broadcaster" pkg="manipulation" type="arm_broadcaster.py" -->
+	<node name="manipulation" pkg="manipulation" type="move_arm_client_class.py"/>
 
     <!-- Speaker node -->
 	<node name="speaker" pkg="ras_espeak" type="espeak_node"/>
