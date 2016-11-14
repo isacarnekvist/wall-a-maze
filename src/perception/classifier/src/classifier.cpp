@@ -60,10 +60,8 @@ std::string training_data_list_file_name = "training_data.list";
 std::vector<hsvColor> colors;
 std::vector<std::string> colorNames;
 
-ros::Publisher pub;
 ros::Publisher object_pub;
 ros::Publisher point_pub;
-ros::Publisher espeak_pub;
 
 double transform_x;
 double transform_y;
@@ -485,11 +483,6 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
             object.type = 1;
 
             // Output
-            //sensor_msgs::PointCloud2 output;
-
-            //pcl::toROSMsg(*cluster_cloud, output);
-
-            //pub.publish(output);
 
             geometry_msgs::PointStamped point;
             point.point.x = object.x;
@@ -507,10 +500,6 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
                 }
             }
             said.push_back(objectType);
-            std_msgs::String phrase;
-            phrase.data = "I see a " + object.color + " " + objectType;
-
-            espeak_pub.publish(phrase);
         }
     }
 
@@ -527,11 +516,15 @@ int main(int argc, char **argv) {
 
     ros::Subscriber point_sub = nh.subscribe("camera/depth_registered/points", 1, pointCloudCallback);
 
-    pub = nh.advertise<sensor_msgs::PointCloud2> ("output", 1);
-
     object_pub = nh.advertise<classifier::Object> ("objectPos_wheelcenter2", 1);
     point_pub = nh.advertise<geometry_msgs::PointStamped> ("objectPos_wheelcenter", 1);
-    espeak_pub = nh.advertise<std_msgs::String> ("espeak/string", 1);
 
-    ros::spin();
+    // Test if this work!
+    ros::Rate loop_rate(10.0);
+
+    while (ros::ok()) {
+        ros::spinOnce();
+
+        loop_rate.sleep();
+    }
 }
