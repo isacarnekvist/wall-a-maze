@@ -13,6 +13,7 @@ from time import sleep
 from math import atan2
 from planner.srv import PlannerStatus
 from planner.msg import PlannerTarget
+from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import Polygon, PoseStamped, Twist
 
 from grid import euler_path_plan, lines_to_grid
@@ -39,6 +40,7 @@ class Planner:
         self.theta = 0.0
         self.has_target = False
         self.wheels = rospy.Publisher('motor_controller', Twist, queue_size=1)
+        self.grid_publisher = rospy.Publisher('occupancy_grid', OccupancyGrid, queue_size=1)
         print('Started planner server')
 
     def target_callback(self, goal):
@@ -182,6 +184,20 @@ class Planner:
     def status_callback(self, args):
         return True
 
+    def publish_visuals(self):
+        if self.grid is None:
+            return
+        og = OccupancyGrid()
+        og.header.frame_id = '/map'
+        og.header.stamp = rospy.Time.now()
+        og.info.resolution = self.grid.cell_width
+        og.info.width = self.grid.n_width
+        og.info.height = self.grid.n_height
+        og.info.origin.position.x = -self.grid.padding
+        og.info.origin.position.y = -self.grid.padding
+        og.data = 100 * self.grid._grid.flatten()
+        self.grid_publisher.publish(og)
+
 
 if __name__ == '__main__':
     rospy.init_node('planner')
@@ -190,4 +206,7 @@ if __name__ == '__main__':
     rospy.Subscriber('position', PoseStamped, planner.position_callback)
     rospy.Subscriber('planner', PlannerTarget, planner.target_callback)
     status_service = rospy.Service('planner_ready', PlannerStatus, planner.status_callback)
-    rospy.spin()
+    rate = rospy.Rate(2)
+    while not rospy.is_shutdown():
+        planner.publish_visuals()
+        rate.sleep()

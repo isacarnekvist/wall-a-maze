@@ -38,7 +38,7 @@ class OccupancyGrid:
         if w > self.padding:
             raise ValueError('Padding needs to be > expand size atm')
         grid_copy = self._grid + 0
-        for degree in np.linspace(0, 2 * np.pi, 40):
+        for degree in np.linspace(0, 2 * np.pi, 180):
             x_displace = int(np.cos(degree) * w / self.cell_width)
             y_displace = int(np.sin(degree) * w / self.cell_width)
             x_shifted = np.roll(grid_copy, x_displace, axis=0)
@@ -104,7 +104,7 @@ class OccupancyGrid:
         return g
         
         
-def lines_to_grid(lines, cell_width=0.02, padding=0.4):
+def lines_to_grid(lines, cell_width=0.03, padding=0.4):
     x_max = -np.inf
     x_min = np.inf
     y_max = -np.inf
