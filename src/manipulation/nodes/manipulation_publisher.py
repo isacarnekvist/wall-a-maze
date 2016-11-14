@@ -14,12 +14,13 @@ def talker():
 	
 	header = Header()
 	header.frame_id = 'wheel_center'
-	point = Point(0.25,0.00,0.04) # in m
+	point = Point(0.20,-0.05,0.03) # in m
 	msg.pickupPos = PointStamped(header,point)
 	
 	msg.job = 'reposition'
 	
-	msg.placePos = msg.pickupPos	
+	placePoint = Point(0.20,0.05,0.03)
+	msg.placePos = PointStamped(header,placePoint)
 	
 	rate = rospy.Rate(10) # 10hz
 	while not rospy.is_shutdown():
