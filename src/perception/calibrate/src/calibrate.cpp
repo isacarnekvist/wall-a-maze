@@ -8,6 +8,20 @@
 // PCL Common
 #include <pcl/common/transforms.h>
 
+// Plane segmentation
+#include <pcl/point_cloud.h>
+#include <iostream>
+#include <pcl/ModelCoefficients.h>
+#include <pcl/io/pcd_io.h>
+#include <pcl/point_types.h>
+#include <pcl/sample_consensus/method_types.h>
+#include <pcl/sample_consensus/model_types.h>
+#include <pcl/segmentation/sac_segmentation.h>
+#include <pcl/filters/extract_indices.h>
+
+
+#include <pcl/filters/passthrough.h>
+
 
 #define PI           3.14159265358979323846  /* pi */
 
@@ -59,6 +73,46 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
 
     pcl::transformPointCloud(*input_cloud, *filtered_cloud, translation, rotation);
 
+    //*filtered_cloud = *input_cloud;
+
+    std::vector<int> indices;
+    pcl::removeNaNFromPointCloud(*filtered_cloud, *filtered_cloud, indices);
+    /*
+    // Plane segmentation
+    pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
+    pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
+    // Create the segmentation object
+    pcl::SACSegmentation<pcl::PointXYZRGB> seg;
+    // Optional
+    seg.setOptimizeCoefficients (true);
+    // Mandatory
+    seg.setModelType (pcl::SACMODEL_PLANE);
+    seg.setMethodType (pcl::SAC_RANSAC);
+    seg.setDistanceThreshold (0.01);
+
+    seg.setInputCloud (filtered_cloud);
+    seg.segment (*inliers, *coefficients);
+
+
+    // Extract the inliers
+    // Create the filtering object
+    pcl::ExtractIndices<pcl::PointXYZRGB> extract;
+
+    extract.setInputCloud (filtered_cloud);
+    extract.setIndices (inliers);
+    extract.setNegative (true);
+    extract.filter (*filtered_cloud);
+    */
+
+    // Remove ground
+    /*
+    pcl::PassThrough<pcl::PointXYZRGB> pass;
+    pass.setInputCloud (filtered_cloud);
+    pass.setFilterFieldName ("y");
+    pass.setFilterLimits (0.0, 1000.0);
+    pass.setFilterLimitsNegative (true);
+    pass.filter (*filtered_cloud);
+    */
 
     // Output
     sensor_msgs::PointCloud2 output;
