@@ -59,12 +59,36 @@ namespace PointCloudHelper {
         sor.filter(*cloud_out);
     }
 
+    void removeOutliers(pcl_xyz::Ptr cloud_in, pcl_xyz::Ptr cloud_out, int numNeighbours, double stddev) {
+        pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
+        sor.setInputCloud(cloud_in);
+        sor.setMeanK(numNeighbours);
+        sor.setStddevMulThresh(stddev);
+        sor.filter(*cloud_out);
+    }
+
     std::vector<pcl::PointIndices> segmentation(pcl_rgb::Ptr cloud_in) {
         pcl::search::KdTree<pcl::PointXYZRGB>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZRGB>);
         tree->setInputCloud(cloud_in);
         std::vector<pcl::PointIndices> cluster_indices;
 
         pcl::EuclideanClusterExtraction<pcl::PointXYZRGB> ec;
+        ec.setClusterTolerance (0.02); // 2cm
+        ec.setMinClusterSize (100);
+        ec.setMaxClusterSize (25000);
+        ec.setSearchMethod (tree);
+        ec.setInputCloud (cloud_in);
+        ec.extract (cluster_indices);
+
+        return cluster_indices;
+    }
+
+    std::vector<pcl::PointIndices> segmentation(pcl_xyz::Ptr cloud_in) {
+        pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);
+        tree->setInputCloud(cloud_in);
+        std::vector<pcl::PointIndices> cluster_indices;
+
+        pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
         ec.setClusterTolerance (0.02); // 2cm
         ec.setMinClusterSize (100);
         ec.setMaxClusterSize (25000);

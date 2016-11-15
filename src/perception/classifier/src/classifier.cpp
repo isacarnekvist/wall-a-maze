@@ -476,7 +476,7 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
             pcl::transformPointCloud(*cluster_cloud, *cluster_cloud, translation, rotation);
             classifier::Object object = PointCloudHelper::getOptimalPickupPoint(cluster_cloud);
 
-	    object.y = -object.y;
+            object.y = -object.y;
             std::cout << colorNames[i] << " " << objectType << " at: " << "X: " << object.x << ", Y: " << object.y << ", Z: " << object.z << std::endl;
 
             object.color = colorNames[i];

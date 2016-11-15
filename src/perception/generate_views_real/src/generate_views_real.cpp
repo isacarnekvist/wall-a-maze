@@ -41,9 +41,12 @@ std::string object;
 std::string save_dir = ros::package::getPath("train_classifier") + "/Data/Views";
 std::string data_extension = ".pcd";
 
+bool rgb_cloud;
+
 void initParams(ros::NodeHandle n) {
     n.getParam("/training_color", colorName);
     n.getParam("/training_object", object);
+    n.getParam("/rgb_cloud", rgb_cloud);
 
     std::map<std::string, double> color_hsv;
 
@@ -76,7 +79,7 @@ std::string getFileName() {
     return boost::lexical_cast<std::string>(currentMax);
 }
 
-void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input_cloud) {
+void pointCloudRGBCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input_cloud) {
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr filtered_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
 
     // Remove NaNs
@@ -117,6 +120,47 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
    }
 }
 
+void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& input_cloud) {
+    pcl::PointCloud<pcl::PointXYZ>::Ptr filtered_cloud (new pcl::PointCloud<pcl::PointXYZ>);
+
+    // Remove NaNs
+    std::vector<int> indices;
+    pcl::removeNaNFromPointCloud(*input_cloud, *filtered_cloud, indices);
+
+    // TODO
+    // REMOVE GROUND AND EVERYTHING
+
+    // Remove outliers
+    PointCloudHelper::removeOutliers(filtered_cloud, filtered_cloud);
+
+    // Check if cloud is empty
+    if (filtered_cloud->points.size() == 0) {
+        return;
+    }
+
+    // Seperate (Segmatation)
+    std::vector<pcl::PointIndices> cluster_indices = PointCloudHelper::segmentation(filtered_cloud);
+
+    for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin(); it != cluster_indices.end(); it++) {
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cluster_cloud (new pcl::PointCloud<pcl::PointXYZ>);
+        for (std::vector<int>::const_iterator pit = it->indices.begin(); pit != it->indices.end(); pit++) {
+            cluster_cloud->points.push_back(filtered_cloud->points[*pit]);
+        }
+        cluster_cloud->width = cluster_cloud->points.size();
+        cluster_cloud->height = 1;
+        cluster_cloud->is_dense = true;
+        cluster_cloud->header = filtered_cloud->header; // Will fuck up RVIZ if not here!
+
+        // Make dir for this object
+        boost::filesystem::path dir(save_dir + "/Real/" + object);
+        boost::filesystem::create_directories(dir);
+
+        // Save the object Point Cloud to file
+        pcl::io::savePCDFileASCII(save_dir + "/Real/" + object + "/" + getFileName() + data_extension, *cluster_cloud);
+    std::cout << "Save a new Point Cloud" << std::endl;
+   }
+}
+
 
 int main(int argc, char **argv) {
     ros::init(argc, argv, "generate_views_real");
@@ -124,8 +168,11 @@ int main(int argc, char **argv) {
 
     initParams(nh);
 
-    ros::Subscriber point_sub = nh.subscribe("camera/depth_registered/points", 1, pointCloudCallback);
-
+    if (rgb_cloud) {
+        ros::Subscriber point_sub = nh.subscribe("camera/depth_registered/points", 1, pointCloudRGBCallback);
+    } else {
+        ros::Subscriber point_sub = nh.subscribe("camera/depth/points", 1, pointCloudCallback);
+    }
     ros::spin();    // Spin once?!
 }
 

@@ -283,6 +283,9 @@ void classify(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud, std::vector<std::pair
 }
 
 std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
+    double lowCertainty = 300;
+    double highCertainty = 500;
+
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_xyz (new pcl::PointCloud<pcl::PointXYZ>);
 
     cloud_xyz->points.resize(cloud_in->points.size());
@@ -296,13 +299,18 @@ std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
 
     classify(cloud_xyz, candidates);
 
+    if (candidates.size() > 0 && candidates[0].second > highCertainty) {
+        std::cout << candidates[0].second << std::endl;
+        return "noop";
+    }
+
     if (color == "red") {
         // Red Cube
         // Red Hollow Cube
         // Red Ball
 
         for (size_t i = 0; i < candidates.size(); i++) {
-            if (candidates[i].second > 300) {
+            if (candidates[i].second > lowCertainty) {
                 return "object"; // We are too unsure
             }
 
@@ -317,7 +325,7 @@ std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
         // Blue Cube
         // Blue Triangle
         for (size_t i = 0; i < candidates.size(); i++) {
-            if (candidates[i].second > 300) {
+            if (candidates[i].second > lowCertainty) {
                 return "object"; // We are too unsure
             }
 
@@ -333,7 +341,7 @@ std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
         // Purple Star
 
         for (size_t i = 0; i < candidates.size(); i++) {
-            if (candidates[i].second > 300) {
+            if (candidates[i].second > lowCertainty) {
                 return "object"; // We are too unsure
             }
 
@@ -349,7 +357,7 @@ std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
         // Yellow Ball
 
         for (size_t i = 0; i < candidates.size(); i++) {
-            if (candidates[i].second > 300) {
+            if (candidates[i].second > lowCertainty) {
                 return "object"; // We are too unsure
             }
 
@@ -365,7 +373,7 @@ std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
         // Green Cylinder
 
         for (size_t i = 0; i < candidates.size(); i++) {
-            if (candidates[i].second > 300) {
+            if (candidates[i].second > lowCertainty) {
                 return "object"; // We are too unsure
             }
 
@@ -392,7 +400,7 @@ std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
         return "patric";
     }
 
-    return "object";
+    return "noop";
 
     // TODO
     //std::cout << classify(cloud_xyz) << std::endl;
@@ -453,6 +461,67 @@ void getColorPosition(const sensor_msgs::ImageConstPtr & image, std::map<std::st
 
 }
 
+std::string getMostLikelyColor(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud_cluster, pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud_original, std::map<std::string, std::vector<cv::Point> > & colorPosition) {
+    // Take points randomly and check closest color?!
+    int k = 5; // How many points to sample
+
+    std::map<std::string, int> colorsOccurrence;
+
+    int max = cloud_cluster->points.size();
+
+    for (int i = 0; i < k; i++) {
+        int random = rand() % max;
+
+        pcl::PointXYZ point = cloud_cluster->points[random];
+
+        // Find the closest point in the original cloud
+        int bestIndex = -1;
+        double minDist;
+        for (size_t j = 0; j < cloud_original->points.size(); j++) {
+            double curDist = pcl::squaredEuclideanDistance(point, cloud_original->points[j]);
+            if (bestIndex == -1 || curDist < minDist) {
+                minDist = curDist;
+                bestIndex = j;
+            }
+        }
+
+        // Get the corresponding image coordinates
+        int heightIndex = bestIndex / cloud_original->width;
+        int widthIndex = bestIndex % cloud_original->width;
+
+        // Find the closest color
+        std::string color;
+        double minDistance = -1;
+        for (std::map<std::string, std::vector<cv::Point> >::iterator it = colorPosition.begin(); it != colorPosition.end(); it++) {
+            for (size_t p = 0; p < it->second.size(); p++) {
+                double curDistance = ((heightIndex - it->second[p].y) * (heightIndex - it->second[p].y)) + ((widthIndex - it->second[p].x) * (widthIndex - it->second[p].x));
+                if (minDistance == -1 || curDistance < minDistance) {
+                    color = it->first;
+                }
+            }
+        }
+
+        if (colorsOccurrence.find(color) == colorsOccurrence.end()) {
+            // Not in the map yet
+            colorsOccurrence[color] = 1;
+        } else {
+            colorsOccurrence[color]++;
+        }
+    }
+
+    // We will guess it is the color that has most entries in the array
+    std::string color;
+    int times = -1;
+    for (std::map<std::string, int>::iterator it = colorsOccurrence.begin(); it != colorsOccurrence.end(); it++) {
+        if (times == -1 || it->second > times) {
+            color = it->first;
+            times = it->second;
+        }
+    }
+
+    return color;
+}
+
 ros::Publisher pub;
 
 void callback(const sensor_msgs::ImageConstPtr & rgb, const sensor_msgs::PointCloud2ConstPtr & cloud_in) {
@@ -461,13 +530,8 @@ void callback(const sensor_msgs::ImageConstPtr & rgb, const sensor_msgs::PointCl
     std::map<std::string, std::vector<cv::Point> > colorPosition;
     getColorPosition(rgb, colorPosition);
 
-    for (size_t i = 0; i < colorPosition["red"].size(); i++) {
-        //std::cout << colorPosition["red"][i].x << ", " << colorPosition["red"][i].y << std::endl;
-    }
-
     /*
     std::cout << rgb->header.stamp - cloud_in->header.stamp << std::endl;
-    std::cout << colorPosition["red"].size() << std::endl;
     */
 
     // POINT CLOUD
@@ -475,14 +539,15 @@ void callback(const sensor_msgs::ImageConstPtr & rgb, const sensor_msgs::PointCl
     pcl::PCLPointCloud2 pcl_pc;
     pcl_conversions::toPCL(*cloud_in, pcl_pc);
 
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_original (new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_transformed (new pcl::PointCloud<pcl::PointXYZ>);
 
-    pcl::fromPCLPointCloud2(pcl_pc, *cloud);
+    pcl::fromPCLPointCloud2(pcl_pc, *cloud_original);
 
     // Remove NaNs
     std::vector<int> indices;
-    pcl::removeNaNFromPointCloud(*cloud, *cloud, indices);
+    pcl::removeNaNFromPointCloud(*cloud_original, *cloud, indices);
 
     // Transform
     const Eigen::Vector3f translation(transform_y, -transform_z, transform_x);
@@ -546,16 +611,34 @@ void callback(const sensor_msgs::ImageConstPtr & rgb, const sensor_msgs::PointCl
         cloud_cluster->is_dense = true;
         cloud_cluster->header = cloud->header; // Will fuck up RVIZ if not here!
 
-        for (size_t i = 0; i < cloud_cluster->points.size(); i++) {
-            std::cout << cloud_cluster->points[i].x << ", " << cloud_cluster->points[i].y << ", " << cloud_cluster->points[i].z << std::endl;
-        }
+        // Get most likely color of cluster
+        std::string color = getMostLikelyColor(cloud_cluster, cloud_original, colorPosition);
 
         // Classify
-        std::string objectType = classify(cloud_cluster, "red"); //colorNames[i]);
-        std::cout << objectType << std::endl;
+        std::string objectType = classify(cloud_cluster, color);
+        //std::cout << color << " " << objectType << std::endl;
 
         // TODO
         // Transform before calculating the optimal pickup point
+        pcl::transformPointCloud(*cloud_cluster, *cloud_cluster, translation, rotation);
+        vision::Object object = PointCloudHelper::getOptimalPickupPoint(cloud_cluster);
+
+        object.y = -object.y;
+        std::cout << color << " " << objectType << " at: " << "X: " << object.x << ", Y: " << object.y << ", Z: " << object.z << std::endl;
+
+        object.color = color;
+        object.type = 1;
+
+        // Output
+
+        geometry_msgs::PointStamped point;
+        point.point.x = object.x;
+        point.point.y = object.y;
+        point.point.z = object.z;
+        point.header.frame_id = "wheel_center";
+        point.header.stamp = ros::Time();
+
+        object_pub.publish(object);
 
         // Output
         sensor_msgs::PointCloud2 output;
@@ -594,10 +677,10 @@ int main(int argc, char **argv) {
 
     /*
     ros::Subscriber point_sub = nh.subscribe("camera/depth_registered/points", 1, pointCloudCallback);
-
+    */
     object_pub = nh.advertise<vision::Object> ("objectPos_wheelcenter2", 1);
     point_pub = nh.advertise<geometry_msgs::PointStamped> ("objectPos_wheelcenter", 1);
-    */
+
     // Test if this work!
     ros::Rate loop_rate(10.0);
 
@@ -606,4 +689,39 @@ int main(int argc, char **argv) {
 
         loop_rate.sleep();
     }
+}
+
+void callback2(const sensor_msgs::ImageConstPtr & rgb, const sensor_msgs::PointCloud2ConstPtr & cloud_in) {
+    cv::Mat imgOriginal = cv_bridge::toCvShare(rgb, "bgr8")->image;
+
+    pcl::PCLPointCloud2 pcl_pc;
+    pcl_conversions::toPCL(*cloud_in, pcl_pc);
+
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+
+    pcl::fromPCLPointCloud2(pcl_pc, *cloud);
+
+    size_t k = 0; // cloud->points.size() - 0;
+    for (size_t i = 0; i < rgb->height; i++) {
+        for (size_t j = 0; j < rgb->width; j++, k++) {
+            k = k % cloud->points.size();
+            if (isnan (cloud->points[k].x) || isnan (cloud->points[k].y) || isnan (cloud->points[k].z)) {
+                    continue;
+            }
+            cv::Vec3b bgrPixel = imgOriginal.at<cv::Vec3b>(i, j);
+            //int32_t rgb = (g << 16) | (g << 8) | g;
+            //cloud->points[k]
+            //cloud->points[k].rgb = *(float*)(&rgb);
+            cloud->points[k].r = bgrPixel.val[2];
+            cloud->points[k].g = bgrPixel.val[1];
+            cloud->points[k].b = bgrPixel.val[0];
+        }
+    }
+
+    // Output
+    sensor_msgs::PointCloud2 output;
+
+    pcl::toROSMsg(*cloud, output);
+
+    pub.publish(output);
 }
