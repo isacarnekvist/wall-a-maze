@@ -4,6 +4,7 @@
 #include <iostream>
 
 #include "map.hpp"
+#include "geometry.hpp"
 #include "constants.hpp"
 
 using namespace std;
@@ -15,13 +16,6 @@ Map::Map() {
     this->min_y = INF;
     this->max_y = -INF;
     readWalls();
-}
-
-bool point_approx_on_line(float x, float y, float x1, float y1, float x2, float y2);
-bool point_approx_on_line(float x, float y, float x1, float y1, float x2, float y2, float tol);
-
-float euclidean(float x1, float y1, float x2, float y2) {
-    return sqrt(pow(x1 - x2, 2) + pow(y1 - y2, 2));
 }
 
 float Map::distance(float x0, float y0, float angle) const {
@@ -58,32 +52,21 @@ float Map::distance(float x0, float y0, float angle) const {
     return min_dist;
 }
 
-/* end inclusive */
-bool is_line(vector<tuple<float, float> > &points, int start, int end) {
-    float x1 = get<0>(points[start]);
-    float y1 = get<1>(points[start]);
-    float x2 = get<0>(points[end]);
-    float y2 = get<1>(points[end]);
-    for (int i = start + 1; i < end; i++) {
-        if (!point_approx_on_line(get<0>(points[i]), get<1>(points[i]), x1, y1, x2, y2, 0.05)) {
-            return false;
-        }
-    }
-    return true;
-}
-
 /* Change to return bool if something was updated? */
 bool Map::update_from_laser(vector<tuple<float, float> > scans, float x, float y, float theta) {
-    bool res = false;
-    return res;
-}
-
-bool Map::point_approx_on_wall(float x, float y) {
-    /* Checks if point (x, y) is on (or almost) on any wall in the map */
-    for (Wall &w : walls) {
-        if (point_approx_on_line(x, y, w.x1, w.y1, w.x2, w.y2)) return true;
+    vector<tuple<float, float> > cartesian_scans = vector<tuple<float, float> >();
+    for (tuple<float, float> &t : scans) {
+        float alpha = get<0>(t);
+        float dist = get<1>(t);
+        cartesian_scans.push_back(make_tuple(x + dist * cos(alpha + theta), y + dist * sin(alpha + theta)));
     }
-    return false;
+    vector<Wall> new_walls = detect_walls(cartesian_scans, x, y, 1.2);
+    for (Wall &w : new_walls) {
+        printf("Wall from %f, %f to %f %f\n", w.x1, w.y1, w.x2, w.y2);
+        walls.push_back(w);
+    }
+    bool res = true;
+    return res;
 }
 
 void Map::readWalls() {
@@ -114,46 +97,4 @@ void Map::readWalls() {
         walls.push_back(w);
     }
     myfile.close();
-}
-
-bool point_approx_on_line(float x, float y, float x1, float y1, float x2, float y2) {
-    return point_approx_on_line(x, y, x1, y1, x2, y2, 0.1);
-}
-
-bool point_approx_on_line(float x, float y, float x1, float y1, float x2, float y2, float tol) {
-    /*
-     * Checks projection of point vertex on wall and wall normal
-     *
-     *                w (wall)
-     *              ^
-     *  w_norm     /
-     *    < _     /
-     *       - _ /
-     *          +---> v (point)
-     *       (0,0)
-     */
-    static const float ca = cos(M_PI / 2);
-    static const float sa = sin(M_PI / 2);
-
-    float wx = (x2 - x1);
-    float wy = (y2 - y1);
-    float wall_len = sqrt(wx * wx + wy * wy);
-    /* Make wall unit vector */
-    wx /= wall_len;
-    wy /= wall_len;
-    float vx = x - x1;
-    float vy = y - y1;
-
-    /* Check if within tolerance from wall */
-    float wall_proj = vx * wx + vy * wy;
-    if (wall_proj < -tol) return false;
-
-    float wnorm_x = ca * wx - sa * wy;
-    float wnorm_y = sa * wx + ca * wy;
-    float norm_proj = vx * wnorm_x + vy * wnorm_y;
-
-    if (norm_proj > tol or norm_proj < -tol) return false;
-    if (wall_proj > wall_len + tol) return false;
-
-    return true;
 }
