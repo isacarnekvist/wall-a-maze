@@ -83,8 +83,7 @@ void Localization::publish_pose_estimate() {
         some_scans_n_shit.push_back(scans[i]);
     }
     certainty = particle_filter->resample(map, some_scans_n_shit);
-    cout << "certainty: " << certainty << endl;
-    if (certainty > 1.0) {
+    if (certainty > 0.2) {
         bool new_obstacles = map.update_from_laser(
             scans,
             particle_filter->mean_estimate_x(),
@@ -92,7 +91,6 @@ void Localization::publish_pose_estimate() {
             particle_filter->mean_estimate_theta()
         );
         if (new_obstacles) {
-            cout << "found new walls/obstacles" << endl;
             publish_updated_obstacles();
         }
     }

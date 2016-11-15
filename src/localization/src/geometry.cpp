@@ -1,5 +1,6 @@
 #include <cmath> // abs(float x)
 #include <math.h>
+#include <assert.h>
 #include <iostream>
 
 #include "geometry.hpp"
@@ -114,7 +115,7 @@ vector<Wall> detect_walls(
 }
 
 /* Returns null if wall is existing, otherwise allocated (Wall*) */
-Wall *wall_comparison(Wall &a, Wall &b) {
+tuple<int, Wall*> wall_comparison(Wall &a, Wall &b) {
     double v1x = a.x2 - a.x1;
     double v1y = a.y2 - a.y1;
     double v2x1 = b.x1 - a.x1;
@@ -136,14 +137,20 @@ Wall *wall_comparison(Wall &a, Wall &b) {
         v2x2_rot = v2x1_rot;
         v2x1_rot = tmp;
     }
-    if (abs(v2y1_rot) > 0.05 || abs(v2y2_rot) > 0.05) {
+    if (abs(v2y1_rot) > 0.1 || abs(v2y2_rot) > 0.1) {
         /* Angles not matching */
-        return (Wall*)0;
+        return make_tuple(OUTSIDE, (Wall*)0);
+    }
+    if (v2x1 > v1x || v2x2 < 0.0) {
+        /* Wall aligned but outside */
+        return make_tuple(OUTSIDE, (Wall*)0);
     }
     if (v2x1_rot > - 0.03 && v2x2_rot < v1x_rot + 0.03) {
         /* Detected wall inside existing wall */
-        return (Wall*)0;
+        return make_tuple(INSIDE, (Wall*)0);
     }
+
+    assert (v1x_rot > 0);
     
     /* Rotate back */
     double new_x1 = min(v2x1_rot, 0.0);
@@ -159,5 +166,5 @@ Wall *wall_comparison(Wall &a, Wall &b) {
     w->y1 = sa_rev * new_x1 + ca_rev * new_y1;
     w->x2 = ca_rev * new_x2 - sa_rev * new_y2;
     w->y2 = sa_rev * new_x2 + ca_rev * new_y2;
-    return w;
+    return make_tuple(EXTEND, w);
 }

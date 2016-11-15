@@ -60,13 +60,39 @@ bool Map::update_from_laser(vector<tuple<float, float> > scans, float x, float y
         float dist = get<1>(t);
         cartesian_scans.push_back(make_tuple(x + dist * cos(alpha + theta), y + dist * sin(alpha + theta)));
     }
+    bool updated = false;
     vector<Wall> new_walls = detect_walls(cartesian_scans, x, y, 1.2);
-    for (Wall &w : new_walls) {
-        printf("Wall from %f, %f to %f %f\n", w.x1, w.y1, w.x2, w.y2);
-        walls.push_back(w);
+    for (Wall &nw : new_walls) {
+        bool matched_wall = false;
+        for (Wall &ow : walls) {
+            tuple<int, Wall*> t = wall_comparison(ow, nw);
+            int wall_status = get<0>(t);
+            Wall *w = get<1>(t);
+            switch (wall_status) {
+                case EXTEND:
+                    cout << "updating earlier wall" << endl;
+                    ow = nw;
+                    matched_wall = true;
+                    updated = true;
+                    break;
+                case INSIDE:
+                    cout << "wall found inside other wall" << endl;
+                    matched_wall = true;
+                    break;
+                case OUTSIDE:
+                    break;
+            }
+            if (matched_wall) break;
+        }
+        if (matched_wall) {
+            break;
+        } else {
+            cout << "found new wall" << endl;
+            walls.push_back(nw);
+            updated = true;
+        }
     }
-    bool res = true;
-    return res;
+    return updated;
 }
 
 void Map::readWalls() {
