@@ -300,7 +300,7 @@ std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
     classify(cloud_xyz, candidates);
 
     if (candidates.size() > 0 && candidates[0].second > highCertainty) {
-        std::cout << candidates[0].second << std::endl;
+        std::cout << "Uncertainty is: " << candidates[0].second << std::endl;
         return "noop";
     }
 
@@ -464,7 +464,8 @@ void getColorPosition(const sensor_msgs::ImageConstPtr & image, std::map<std::st
 std::string getMostLikelyColor(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud_cluster, pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud_original, std::map<std::string, std::vector<cv::Point> > & colorPosition) {
     // Take points randomly and check closest color?!
     int k = 5; // How many points to sample
-    double maxDistSquaredFromColor = 100;
+    double maxDistSquaredFromColor = 500; //1000000;
+    maxDistSquaredFromColor *= maxDistSquaredFromColor;
 
     std::map<std::string, int> colorsOccurrence;
 
@@ -498,6 +499,9 @@ std::string getMostLikelyColor(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud_clust
                 double curDistance = ((heightIndex - it->second[p].y) * (heightIndex - it->second[p].y)) + ((widthIndex - it->second[p].x) * (widthIndex - it->second[p].x));
                 if (curDistance < maxDistSquaredFromColor && (minDistance == -1 || curDistance < minDistance)) {
                     color = it->first;
+                    minDistance = curDistance;
+                } else if (curDistance > maxDistSquaredFromColor) {
+                    std::cout << "Distance is: " << curDistance << std::endl;
                 }
             }
         }
@@ -550,9 +554,15 @@ void callback(const sensor_msgs::ImageConstPtr & rgb, const sensor_msgs::PointCl
 
     pcl::fromPCLPointCloud2(pcl_pc, *cloud_original);
 
+    // Filtering input scan to increase speed of registration.
+    pcl::VoxelGrid<pcl::PointXYZ> approximate_voxel_filter;
+    approximate_voxel_filter.setLeafSize (0.005, 0.005, 0.005);
+    approximate_voxel_filter.setInputCloud (cloud_original);
+    approximate_voxel_filter.filter (*cloud);
+
     // Remove NaNs
     std::vector<int> indices;
-    pcl::removeNaNFromPointCloud(*cloud_original, *cloud, indices);
+    pcl::removeNaNFromPointCloud(*cloud, *cloud, indices);
 
     // Transform
     const Eigen::Vector3f translation(transform_y, -transform_z, transform_x);
@@ -618,6 +628,12 @@ void callback(const sensor_msgs::ImageConstPtr & rgb, const sensor_msgs::PointCl
 
         // Get most likely color of cluster
         std::string color = getMostLikelyColor(cloud_cluster, cloud_original, colorPosition);
+
+        if (color == "noop") {
+            // TODO
+            // Should see if it is another obstacle
+            continue; // Can not classify this!
+        }
 
         // Classify
         std::string objectType = classify(cloud_cluster, color);
