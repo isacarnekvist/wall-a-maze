@@ -74,62 +74,7 @@ bool is_line(vector<tuple<float, float> > &points, int start, int end) {
 
 /* Change to return bool if something was updated? */
 bool Map::update_from_laser(vector<tuple<float, float> > scans, float x, float y, float theta) {
-
-    /* 1: Filter out scans that are not new walls */
-    vector<tuple<float, float> > filtered = vector<tuple<float, float> >();
-    /* The weird ordering is that we want to start the scan behind the robot,
-     * this is since new obstacles will be in front of the robot. This way we
-     * will not start to scan an object from its middle. */
-    for (int i = 45; i < scans.size() + 45; i++) {
-        tuple<float, float> &t = scans[i % scans.size()];
-        float alpha = get<0>(t);
-        float dist = get<1>(t);
-        float px = x + dist * cos(alpha + theta);
-        float py = y + dist * sin(alpha + theta);
-        if (!point_approx_on_wall(px, py)) {
-            filtered.push_back(make_tuple(px, py));
-        }
-    }
-
-    /* 2: Find line segments */
-    /* Disclaimer, this might be buggy! */
-    if (filtered.size() < 5) {
-        return false;
-    }
     bool res = false;
-    int wall_start = 0;
-    for (int i = 2; i < filtered.size(); i++) {
-        if (euclidean(
-                get<0>(filtered[i-1]),
-                get<1>(filtered[i-1]),
-                get<0>(filtered[i]),
-                get<1>(filtered[i])) > 0.25 ||   /* Too long distance between segments */
-            !is_line(filtered, wall_start, i)) { /* ... or point outside line estimate */
-            if (i - wall_start > 4) {
-                Wall w = {
-                    get<0>(filtered[wall_start]),
-                    get<1>(filtered[wall_start]),
-                    get<0>(filtered[i-1]),
-                    get<1>(filtered[i-1]),
-                };
-                walls.push_back(w);
-                res = true;
-            }
-            wall_start = i + 1;
-            i += 2;
-            continue;
-        }
-    }
-    if (wall_start < filtered.size() - 4) {
-        Wall w = {
-            get<0>(filtered[wall_start]),
-            get<1>(filtered[wall_start]),
-            get<0>(filtered[filtered.size() - 1]),
-            get<1>(filtered[filtered.size() - 1]),
-        };
-        walls.push_back(w);
-        res = true;
-    }
     return res;
 }
 
