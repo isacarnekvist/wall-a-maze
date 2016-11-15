@@ -1,3 +1,4 @@
+#include <cmath> // abs(float x)
 #include <math.h>
 #include <iostream>
 
@@ -110,4 +111,53 @@ vector<Wall> detect_walls(
         }
     }
     return walls;
+}
+
+/* Returns null if wall is existing, otherwise allocated (Wall*) */
+Wall *wall_comparison(Wall &a, Wall &b) {
+    double v1x = a.x2 - a.x1;
+    double v1y = a.y2 - a.y1;
+    double v2x1 = b.x1 - a.x1;
+    double v2y1 = b.y1 - a.y1;
+    double v2x2 = b.x2 - a.x1;
+    double v2y2 = b.y2 - a.y1;
+
+    double alpha = atan2(v1y, v1x);
+    double ca = cos(-alpha);
+    double sa = sin(-alpha);
+    double v1x_rot = ca * v1x - sa * v1y;
+    double v1y_rot = sa * v1x + ca * v1y;
+    double v2x1_rot = ca * v2x1 - sa * v2y1;
+    double v2y1_rot = sa * v2x1 + ca * v2y1;
+    double v2x2_rot = ca * v2x2 - sa * v2y2;
+    double v2y2_rot = sa * v2x2 + ca * v2y2;
+    if (v2x1_rot > v2x2_rot) {
+        double tmp = v2x2_rot;
+        v2x2_rot = v2x1_rot;
+        v2x1_rot = tmp;
+    }
+    if (abs(v2y1_rot) > 0.05 || abs(v2y2_rot) > 0.05) {
+        /* Angles not matching */
+        return (Wall*)0;
+    }
+    if (v2x1_rot > - 0.03 && v2x2_rot < v1x_rot + 0.03) {
+        /* Detected wall inside existing wall */
+        return (Wall*)0;
+    }
+    
+    /* Rotate back */
+    double new_x1 = min(v2x1_rot, 0.0);
+    double new_x2 = max(v2x2_rot, v1x_rot);
+    double new_y1 = 0;
+    double new_y2 = 0;
+
+    double ca_rev = cos(alpha);
+    double sa_rev = sin(alpha);
+
+    Wall *w = new Wall();
+    w->x1 = ca_rev * new_x1 - sa_rev * new_y1;
+    w->y1 = sa_rev * new_x1 + ca_rev * new_y1;
+    w->x2 = ca_rev * new_x2 - sa_rev * new_y2;
+    w->y2 = sa_rev * new_x2 + ca_rev * new_y2;
+    return w;
 }
