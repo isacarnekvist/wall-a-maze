@@ -38,6 +38,8 @@ class Planner:
         self.plan = None
         self.x = 0.0
         self.y = 0.0
+        self.target_x = 0.0
+        self.target_y = 0.0
         self.theta = 0.0
         self.has_target = False
         self.wheels = rospy.Publisher('motor_controller', Twist, queue_size=1)
@@ -51,6 +53,7 @@ class Planner:
         if self.goal.is_abort_action:
             print('target was canceled')
             self.has_target = False
+            self.plan = []
             self.stop()
             return
 
@@ -95,8 +98,11 @@ class Planner:
         # Redo these two to be only one?
         self.has_target = False
         self.goal = None
+        self.plan = []
 
     def line_iterator(self, x, y, final_rotation=None):
+        self.target_x = x
+        self.target_y = y
         # Initial rotation
         start_theta = atan2(y - self.y, x - self.x)
         if start_theta < 0.0:
@@ -109,7 +115,7 @@ class Planner:
         sleep(1.5)
 
         # Move along line
-        while np.sqrt((x - self.x) ** 2 + (y - self.y) **2) > 0.075:
+        while np.sqrt((x - self.x) ** 2 + (y - self.y) **2) > 0.1:
             self.correct_position(x, y)
             yield
         self.stop()
@@ -126,7 +132,7 @@ class Planner:
         msg = Twist()
         theta_correction = closest_theta_adjustment(self.theta, theta)
         print('Correcting theta {} radians'.format(theta_correction))
-        msg.angular.z = 1.00 * np.sign(theta_correction)
+        msg.angular.z = 0.80 * np.sign(theta_correction)
         time_needed = abs(theta_correction / msg.angular.z)
         secs_needed = int(time_needed)
         nsecs_needed = int((time_needed - secs_needed) * 1e9)
@@ -200,15 +206,15 @@ class Planner:
         og.data = 100 * self.grid._grid.flatten()
         self.grid_publisher.publish(og)
 
+        path = Path()
+        path.header.frame_id = '/map'
         if self.plan:
-            path = Path()
-            path.header.frame_id = '/map'
-            for x, y in [(self.x, self.y)] + self.plan:
+            for x, y in [(self.x, self.y)] + [(self.target_x, self.target_y)] + self.plan:
                 pose = PoseStamped()
                 pose.pose.position.x = x
                 pose.pose.position.y = y
                 path.poses.append(pose)
-            self.path_publisher.publish(path)
+        self.path_publisher.publish(path)
 
 
 if __name__ == '__main__':

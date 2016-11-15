@@ -58,10 +58,14 @@ Localization::Localization(ros::NodeHandle &node_handle) {
     map = Map();
     particle_filter = new ParticleFilter(
         1048,       /* Number of particles */
-        map.min_x,
-        map.max_x,
-        map.min_y,
-        map.max_y,
+        2.1,
+        2.4,
+        0.2,
+        1.0,
+        //map.min_x,
+        //map.max_x,
+        //map.min_y,
+        //map.max_y,
         0,          /* theta_min */
         2 * M_PI    /* theta_max */
     );
@@ -79,7 +83,8 @@ void Localization::publish_pose_estimate() {
         some_scans_n_shit.push_back(scans[i]);
     }
     certainty = particle_filter->resample(map, some_scans_n_shit);
-    if (certainty > 0.3) {
+    // if (certainty > 0.3) {
+    if (certainty > 1.0) {
         bool new_obstacles = map.update_from_laser(
             scans,
             particle_filter->mean_estimate_x(),
@@ -169,12 +174,6 @@ void Localization::publish_map_visualization() {
         //wall_marker.text=line_stream.str();
         tf::Quaternion quat; quat.setRPY(0.0,0.0,angle);
         tf::quaternionTFToMsg(quat, wall_marker.pose.orientation);
-
-        if (wall_id > 13) {
-            wall_marker.color.r = (0.0/255.0);
-            wall_marker.color.g = (255.0/255.0);
-            wall_marker.color.b = (0.0/255.0);
-        }
 
         //// add to array
         wall_marker.id = wall_id;
