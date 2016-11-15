@@ -83,7 +83,7 @@ void Localization::publish_pose_estimate() {
         some_scans_n_shit.push_back(scans[i]);
     }
     certainty = particle_filter->resample(map, some_scans_n_shit);
-    // if (certainty > 0.3) {
+    cout << "certainty: " << certainty << endl;
     if (certainty > 1.0) {
         bool new_obstacles = map.update_from_laser(
             scans,
