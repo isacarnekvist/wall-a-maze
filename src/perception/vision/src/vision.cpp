@@ -464,6 +464,7 @@ void getColorPosition(const sensor_msgs::ImageConstPtr & image, std::map<std::st
 std::string getMostLikelyColor(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud_cluster, pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud_original, std::map<std::string, std::vector<cv::Point> > & colorPosition) {
     // Take points randomly and check closest color?!
     int k = 5; // How many points to sample
+    double maxDistSquaredFromColor = 100;
 
     std::map<std::string, int> colorsOccurrence;
 
@@ -495,10 +496,14 @@ std::string getMostLikelyColor(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud_clust
         for (std::map<std::string, std::vector<cv::Point> >::iterator it = colorPosition.begin(); it != colorPosition.end(); it++) {
             for (size_t p = 0; p < it->second.size(); p++) {
                 double curDistance = ((heightIndex - it->second[p].y) * (heightIndex - it->second[p].y)) + ((widthIndex - it->second[p].x) * (widthIndex - it->second[p].x));
-                if (minDistance == -1 || curDistance < minDistance) {
+                if (curDistance < maxDistSquaredFromColor && (minDistance == -1 || curDistance < minDistance)) {
                     color = it->first;
                 }
             }
+        }
+
+        if (minDistance == -1) {
+            continue; // Too far away from a color!
         }
 
         if (colorsOccurrence.find(color) == colorsOccurrence.end()) {
@@ -510,7 +515,7 @@ std::string getMostLikelyColor(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud_clust
     }
 
     // We will guess it is the color that has most entries in the array
-    std::string color;
+    std::string color = "noop";
     int times = -1;
     for (std::map<std::string, int>::iterator it = colorsOccurrence.begin(); it != colorsOccurrence.end(); it++) {
         if (times == -1 || it->second > times) {
