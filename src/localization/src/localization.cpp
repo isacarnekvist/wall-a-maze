@@ -58,10 +58,10 @@ Localization::Localization(ros::NodeHandle &node_handle) {
     map = Map();
     particle_filter = new ParticleFilter(
         1048,       /* Number of particles */
-        2.1,
-        2.4,
-        0.2,
-        1.0,
+        0.5,
+        1.2,
+        1.8,
+        2.3,
         //map.min_x,
         //map.max_x,
         //map.min_y,
@@ -83,6 +83,7 @@ void Localization::publish_pose_estimate() {
         some_scans_n_shit.push_back(scans[i]);
     }
     certainty = particle_filter->resample(map, some_scans_n_shit);
+    cout << "centainty in position: " << certainty << endl;
     if (certainty > 0.3) {
         bool new_obstacles = map.update_from_laser(
             scans,

@@ -149,7 +149,7 @@ class Planner:
         target_theta = atan2(y - self.y, x - self.x)
         theta_error = closest_theta_adjustment(self.theta, target_theta)
         msg = Twist()
-        msg.linear.x = 0.20
+        msg.linear.x = 0.18
         msg.angular.z = theta_error * 0.5 # will be rate dependent
         self.wheels.publish(msg)
 
@@ -204,6 +204,7 @@ class Planner:
         og.info.origin.position.x = -self.grid.padding
         og.info.origin.position.y = -self.grid.padding
         og.data = 100 * self.grid._grid.flatten()
+        print('og.data field:', og.data)
         self.grid_publisher.publish(og)
 
         path = Path()

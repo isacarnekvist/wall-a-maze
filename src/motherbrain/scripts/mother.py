@@ -13,7 +13,7 @@ from std_msgs.msg import String
 from planner.msg import PlannerTarget
 from geometry_msgs.msg import PoseStamped, PointStamped
 from classifier.msg import Object as classifierObject
-
+from manipulation.msg import Manipulation
 
 class DetectedObject:
 
@@ -40,7 +40,7 @@ class Mother:
 
     def __init__(self):
         self.planner = rospy.Publisher('planner', PlannerTarget, queue_size=1)
-        self.arm = rospy.Publisher('objectPos_wheelcenter', PointStamped, queue_size=1)
+        self.arm = rospy.Publisher('mother/manipulation', Manipulation, queue_size=1)
         self.speaker = rospy.Publisher('espeak/string', String, queue_size=1)
         self.x = None
         self.y = 0.0
@@ -100,6 +100,9 @@ class Mother:
         ]
         self.theta = tf.transformations.euler_from_quaternion(q)[-1] # roll
 
+#	def collision(data):
+#		if(data=="Stop"):
+#			mother.stop()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='MotherBrain™ (Run at your own risk)')
@@ -125,6 +128,7 @@ if __name__ == '__main__':
     mother = Mother()
     rospy.Subscriber('objectPos_wheelcenter2', classifierObject, mother.perception_callback)
     rospy.Subscriber('position', PoseStamped, mother.position_callback)
+    #rospy.Subscriber('/imu/collision', String, mother.collision)
     rospy.init_node('motherbrain')
 
     x, y, theta = None, None, None
