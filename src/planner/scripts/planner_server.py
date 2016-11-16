@@ -14,6 +14,7 @@ from math import atan2
 from planner.srv import PlannerStatus
 from planner.msg import PlannerTarget
 from nav_msgs.msg import OccupancyGrid, Path
+from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Polygon, PoseStamped, Twist
 
 from grid import euler_path_plan, lines_to_grid
@@ -36,97 +37,64 @@ class Planner:
         self.graph = None
         self.goal = None
         self.plan = None
-        self.x = 0.0
-        self.y = 0.0
-        self.target_x = 0.0
-        self.target_y = 0.0
-        self.theta = 0.0
-        self.has_target = False
+        self.scans = []
         self.wheels = rospy.Publisher('motor_controller', Twist, queue_size=1)
         self.grid_publisher = rospy.Publisher('occupancy_grid', OccupancyGrid, queue_size=1)
         self.path_publisher = rospy.Publisher('path', Path, queue_size=1)
         print('Started planner server')
 
     def target_callback(self, goal):
-        self.stop()
+        self.abort()
         self.goal = goal
         if self.goal.is_abort_action:
             print('target was canceled')
-            self.has_target = False
-            self.plan = []
-            self.stop()
+            self.abort()
             return
 
-        self.has_target = True
-        rate = rospy.Rate(100)
+        rate = rospy.Rate(5)
 
         # Convenience adjustments
-        while not 0 <= self.theta <= 2 * np.pi:
-            self.theta += -np.sign(self.theta) * 2 * np.pi
         while not 0 <= self.goal.theta <= 2 * np.pi:
             self.goal.theta += -np.sign(self.goal.theta) * 2 * np.pi
 
         if self.grid is None or self.graph is None:
-            self.has_target = False
+            self.abort()
             raise ValueError('Have not recieved occupancy grid!, ignoring request')
             return
-        print('requesting euler plan...')
-        self.plan = euler_path_plan(self.x, self.y, self.goal.x, self.goal.y, self.grid, self.graph)
-        print('executing euler plan')
-        if len(self.plan) == 1:
-            current_target = self.line_iterator(*self.plan[0], final_rotation=self.goal.theta)
-        else:
-            current_target = self.line_iterator(*self.plan[0])
-        self.plan = self.plan[1:]
 
-        while self.has_target:
-            try:
-                next(current_target)
-            except StopIteration:
-                if self.plan:
-                    if len(self.plan) == 1:
-                        print('plan length 1, final rot:', self.goal.theta)
-                        current_target = self.line_iterator(*self.plan[0], final_rotation=self.goal.theta)
-                    else:
-                        current_target = self.line_iterator(*self.plan[0])
-                    self.plan = self.plan[1:]
-                else:
-                    self.has_target = False
-                    break
-            rate.sleep()
-        self.stop()
-        # Redo these two to be only one?
-        self.has_target = False
-        self.goal = None
-        self.plan = []
+        print('requesting euler plan...')
+        try:
+            self.plan = euler_path_plan(self.x, self.y, self.goal.x, self.goal.y, self.grid, self.graph)
+        except IndexError:
+            print('Current position or goal outside occupancy grid?', file=sys.stderr)
+            self.abort()
+            return
+
+        print('executing euler plan')
+        steps = len(self.plan)
+        for step, (x, y) in enumerate(self.plan):
+            if self.goal is None: # while we have a goal / we were not aborted
+                break
+            print(x, y)
+            for _ in self.line_iterator(x, y, step == steps - 1):
+                rate.sleep()
+            self.plan = self.plan[1:]
+        self.abort()
+                    
 
     def line_iterator(self, x, y, final_rotation=None):
-        self.target_x = x
-        self.target_y = y
-        # Initial rotation
-        start_theta = atan2(y - self.y, x - self.x)
-        if start_theta < 0.0:
-            start_theta += 2 * np.pi
 
-        for _ in self.rotation_iterator(start_theta):
-            yield
-        self.stop()
-
-        sleep(1.5)
-
-        # Move along line
-        while np.sqrt((x - self.x) ** 2 + (y - self.y) **2) > 0.1:
+        # Travel along a line to the partial target (x, y)
+        original_position = np.array([self.x, self.y])
+        target = np.array([x, y])
+        distance = np.linalg.norm(target - original_position)
+        #                    v distance traveled + 5 cm
+        print('original distance and current distance travelled:')
+        print(distance, np.linalg.norm(np.array([self.x, self.y]) - original_position) + 0.05)
+        while distance > np.linalg.norm(np.array([self.x, self.y]) - original_position) + 0.05:
             self.correct_position(x, y)
             yield
         self.stop()
-
-        sleep(1.0)
-
-        if final_rotation is not None:
-            for _ in self.rotation_iterator(final_rotation):
-                yield
-            self.stop()
-            sleep(1.0)
 
     def rotation_iterator(self, theta):
         msg = Twist()
@@ -142,6 +110,12 @@ class Planner:
         while rospy.Time.now() < start_time + stop_time:
             yield
 
+    """For aborting a current goal and stopping the robot"""
+    def abort(self):
+        self.stop()
+        self.goal = None
+
+    """For just stopping the robot, not aborting a current goal"""
     def stop(self):
         self.wheels.publish(Twist())
 
@@ -155,17 +129,12 @@ class Planner:
 
     def obstacles_callback(self, data):
         print('Collecting obstacles')
-        self.stop()
-        self.has_target = False
         if self.goal:
             print('copying previous goal and recreating grid/map')
             previous_goal = deepcopy(self.goal)
         else:
             previous_goal = None
-        # TODO:
-        # Store goals as instance variables instead
-        # Run the below code to update graph and grid
-        # Resend goals after graph and grid are updated
+        self.abort()
         lines = []
         for i in range(len(data.points) / 2):
             p1 = data.points[2 * i]
@@ -188,6 +157,9 @@ class Planner:
             data.pose.orientation.w
         ]
         self.theta = tf.transformations.euler_from_quaternion(q)[-1] # roll
+        # for convenience:
+        while not 0 <= self.theta <= 2 * np.pi:
+            self.theta += -np.sign(self.theta) * 2 * np.pi
 
     def status_callback(self, args):
         return True
@@ -204,19 +176,21 @@ class Planner:
         og.info.origin.position.x = -self.grid.padding
         og.info.origin.position.y = -self.grid.padding
         og.data = 100 * self.grid._grid.flatten()
-        print('og.data field:', og.data)
         self.grid_publisher.publish(og)
 
         path = Path()
         path.header.frame_id = '/map'
         if self.plan:
-            for x, y in [(self.x, self.y)] + [(self.target_x, self.target_y)] + self.plan:
+            for x, y in [(self.x, self.y)] + self.plan:
                 pose = PoseStamped()
                 pose.pose.position.x = x
                 pose.pose.position.y = y
                 path.poses.append(pose)
         self.path_publisher.publish(path)
 
+    def laser_callback(self, scans):
+        for angle in range(360):
+            print(np.pi * angle / 180.0, scans.ranges[angle])
 
 if __name__ == '__main__':
     rospy.init_node('planner')
@@ -224,6 +198,7 @@ if __name__ == '__main__':
     rospy.Subscriber('obstacles', Polygon, planner.obstacles_callback)
     rospy.Subscriber('position', PoseStamped, planner.position_callback)
     rospy.Subscriber('planner', PlannerTarget, planner.target_callback)
+    rospy.Subscriber('scan', LaserScan, planner.laser_callback)
     status_service = rospy.Service('planner_ready', PlannerStatus, planner.status_callback)
     rate = rospy.Rate(2)
     while not rospy.is_shutdown():
