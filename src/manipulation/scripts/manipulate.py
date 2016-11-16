@@ -16,9 +16,10 @@ from manipulation.msg import Manipulation
 class Manipulate():
 
 	def __init__(self):
+		self.pub = rospy.Publisher('arm_state', String, queue_size=1) 
+		
 		rospy.init_node('move_arm_client')
 	
-		rospy.Subscriber("/objectPos_wheelcenter", PointStamped, self.goal_callback)
 		rospy.Subscriber("/mother/manipulation", Manipulation, self.mother_callback)
 		rospy.Subscriber("/uarm/joint_state", JointState , self.joint_callback)
 		 
@@ -175,16 +176,6 @@ class Manipulate():
 			self.drop = data.drop
 		else:
 			print "Mother topic empty"
-		
-	
-	def goal_callback(self, data):
-		self.goalPos_wheel = data
-		self.goalPosStamped = self.transform_wheelToArm(data)
-	
-		scale = 100.0 # meter to cm
-		self.goalPosStamped.point.x = self.goalPosStamped.point.x*scale	
-		self.goalPosStamped.point.y = self.goalPosStamped.point.y*scale
-		self.goalPosStamped.point.z = self.goalPosStamped.point.z*scale
 
 	
 	def joint_callback(self, data):
@@ -234,6 +225,9 @@ class Manipulate():
 	def moveToPos_client(self, position, move_mode, move_duration, int_type):
 		try:
 			response = self.moveTo_service(position, self.eef_orientation, move_mode, move_duration, self.ignore_orientation, int_type, self.check_limits)
+			if response.error == True:
+				print "Unable to move to position {}. Returning to initial pos.".format(position)
+				self.inOperation = False
 			return response
 		except rospy.ServiceException, e:
 			print "MoveTo service call failed: %s"%e
@@ -242,6 +236,9 @@ class Manipulate():
 	def moveToJoints_client(self, position, move_mode, move_duration, int_type):
 		try:
 			response = self.moveToJoints_service(position[0], position[1], position[2], position[3], move_mode, move_duration, int_type, self.check_limits)
+			if response.error == True:
+				print "Unable to move to position {}. Returning to initial pos.".format(position)
+				self.inOperation = False
 			return response
 		except rospy.ServiceException, e:
 			print "MoveToJoints service call failed: %s"%e
@@ -373,7 +370,10 @@ class Manipulate():
 		
 		# Modify goal pos to go to lower z
 		pickupPos_arm_low = pickupPos_high_new
-		pickupPos_arm_low.z = self.pickupPos_arm.z-1.0
+		pickupPos_arm_low.z = self.pickupPos_arm.z
+		
+		# Turn on pump
+		self.pump_control(True)
 		
 		# Move down with corrected x,y
 		atGoal_state = self.moveToPos_client(pickupPos_arm_low,self.move_mode, self.moveDuration_abs, self.interpol_linear)
@@ -393,67 +393,13 @@ class Manipulate():
 		
 		if atGoal_state.error == False:
 			print "Changed pickup status to picked up !"
-			self.isPickedUp = True
-		
-		'''
-		atGoal_stamped = PointStamped()
-		atGoal_stamped.point = atGoal_state.position
-		atGoal_stamped.header.frame_id = 'uarm'
-		atGoal_state_wheel = self.transform_armToWheel(atGoal_stamped)
-		print("Moved to target", atGoal_state_wheel)
-		'''
-		
-		rospy.sleep(2.0)
-		
-		# Turn on pump
-		self.pump_control(True)
+			self.isPickedUp = True	
 	
 		# Move back up
 		aboveGoal_state = self.moveToPos_client(aboveGoal_pos, self.move_mode, self.moveDuration_abs, self.interpol_linear)
 		
-		
-
-		
 		return atGoal_state
 		
-		
-				
-	def moveSteps(self):
-	
-		scale = 100.0 # meter to cm
-		
-		# To Resting position
-		
-		
-		#rospy.sleep(2.0)
-
- 		if self.goalPosStamped is None:
-			return
-		
-		# To GOAL position
-		if self.goalPosStamped.header.frame_id is 'None':
-			print ""
-			print "No goal position provided"
-			print ""
-			return
-			
-		goalPos_current = self.goalPosStamped.point	
-		atGoal_state = self.moveToGoal(goalPos_current)
-		
-		# Turn ON PUMP
-		
-		# CRITERIA??
-		
-		
-		# Move back to initial in two steps
-		aboveGoal_pos = Point(goalPos_current.x, goalPos_current.y, self.initPos_arm.z)
-		aboveGoal_state = self.moveToPos_client(aboveGoal_pos, self.move_mode, self.moveDuration_abs, self.interpol_linear)
-		self.pump_control(False)
-		
-		initial_state = self.moveToPos_client(self.initPos_arm, self.move_mode, self.moveDuration_abs, self.interpol_linear)
-		print "Back in initial position"
-
-		self.goalPosStamped = None
 	
 
 

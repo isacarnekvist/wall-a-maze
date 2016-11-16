@@ -34,11 +34,14 @@
 	<node name="planner" pkg="planner" type="planner_server.py" output="screen"/>
 
 	<!-- UArm -->
-	<!-- include file="$(find uarm)/launch/kth_uarm.launch" -->
-	<!-- node name="arm_broadcaster" pkg="manipulation" type="arm_broadcaster.py" -->
-	<node name="manipulation" pkg="manipulation" type="move_arm_client_class.py"/>
+	<include file="$(find uarm)/launch/kth_uarm.launch" />
+	<node name="arm_broadcaster" pkg="manipulation" type="arm_broadcaster.py" />
+	
 
     <!-- Speaker node -->
 	<node name="speaker" pkg="ras_espeak" type="espeak_node"/>
+	
+	<!-- IMU -->
+	<include file="$(find phidgets_imu)/launch/imu.launch"/>
 
 </launch>

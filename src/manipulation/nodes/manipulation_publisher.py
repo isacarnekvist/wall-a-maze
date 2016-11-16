@@ -19,7 +19,7 @@ def talker():
 	
 	msg.job = 'reposition'
 	
-	placePoint = Point(0.20,0.05,0.03)
+	placePoint = Point(0.20,0.05,0.01)
 	msg.placePos = PointStamped(header,placePoint)
 	
 	rate = rospy.Rate(10) # 10hz
