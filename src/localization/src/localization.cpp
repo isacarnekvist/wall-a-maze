@@ -34,6 +34,7 @@ public:
     void publish_map_visualization();
     void publish_updated_obstacles();
     float certainty;
+    ParticleFilter *particle_filter; /* Doesn't work without '*' and new */
 private:
     vector<tuple<float, float> > scans;
     ros::Publisher position_publisher;
@@ -41,7 +42,6 @@ private:
     ros::Publisher obstacle_publisher;
     ros::Publisher map_publisher;
     Map map;
-    ParticleFilter *particle_filter; /* Doesn't work without '*' and new */
     bool recieved_laser;
     bool recieved_odometry;
     ros::Time odometry_stamp;
@@ -58,14 +58,10 @@ Localization::Localization(ros::NodeHandle &node_handle) {
     map = Map();
     particle_filter = new ParticleFilter(
         1048,       /* Number of particles */
-        0.5,
-        1.2,
-        1.8,
-        2.3,
-        //map.min_x,
-        //map.max_x,
-        //map.min_y,
-        //map.max_y,
+        map.min_x,
+        map.max_x,
+        map.min_y,
+        map.max_y,
         0,          /* theta_min */
         2 * M_PI    /* theta_max */
     );
@@ -83,8 +79,7 @@ void Localization::publish_pose_estimate() {
         some_scans_n_shit.push_back(scans[i]);
     }
     certainty = particle_filter->resample(map, some_scans_n_shit);
-    cout << "centainty in position: " << certainty << endl;
-    if (certainty > 0.3) {
+    if (certainty > 1e6) { /* Don't do this for now */
         bool new_obstacles = map.update_from_laser(
             scans,
             particle_filter->mean_estimate_x(),
@@ -215,6 +210,17 @@ int main(int argc, char **argv) {
     ros::init(argc, argv, "localization");
     ros::NodeHandle node_handle;
     Localization localization (node_handle);
+    if (argc == 5) {
+        localization.particle_filter = new ParticleFilter(
+            1048,       /* Number of particles */
+            atof(argv[1]),
+            atof(argv[2]),
+            atof(argv[3]),
+            atof(argv[4]),
+            0,          /* theta_min */
+            2 * M_PI    /* theta_max */
+        );
+    }
     ros::Subscriber laser_subscriber = node_handle.subscribe(
         "/scan",
         10,
