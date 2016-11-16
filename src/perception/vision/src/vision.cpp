@@ -300,7 +300,7 @@ std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
     classify(cloud_xyz, candidates);
 
     if (candidates.size() > 0 && candidates[0].second > highCertainty) {
-        std::cout << "Uncertainty is: " << candidates[0].second << std::endl;
+        //std::cout << "Uncertainty is: " << candidates[0].second << std::endl;
         return "noop";
     }
 
@@ -501,7 +501,7 @@ std::string getMostLikelyColor(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud_clust
                     color = it->first;
                     minDistance = curDistance;
                 } else if (curDistance > maxDistSquaredFromColor) {
-                    std::cout << "Distance is: " << curDistance << std::endl;
+                    //std::cout << "Distance is: " << curDistance << std::endl;
                 }
             }
         }
@@ -637,6 +637,10 @@ void callback(const sensor_msgs::ImageConstPtr & rgb, const sensor_msgs::PointCl
 
         // Classify
         std::string objectType = classify(cloud_cluster, color);
+        if (objectType == "noop") {
+            // TODO
+            continue;
+        }
         //std::cout << color << " " << objectType << std::endl;
 
         // TODO
@@ -703,6 +707,7 @@ int main(int argc, char **argv) {
     point_pub = nh.advertise<geometry_msgs::PointStamped> ("objectPos_wheelcenter", 1);
 
     // Test if this work!
+    /*
     ros::Rate loop_rate(10.0);
 
     while (ros::ok()) {
@@ -710,6 +715,8 @@ int main(int argc, char **argv) {
 
         loop_rate.sleep();
     }
+    */
+    ros::spin();
 }
 
 void callback2(const sensor_msgs::ImageConstPtr & rgb, const sensor_msgs::PointCloud2ConstPtr & cloud_in) {

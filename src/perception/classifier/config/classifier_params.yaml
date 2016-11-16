@@ -1,15 +1,15 @@
 # For classifier
-translation: { x: 0.095, y: 0.0, z: 0.165 }
-rotation: { yaw: 0.0, roll: 32.5, pitch: 0.0 }
+translation: { x: 0.105, y: 0.0, z: 0.145 }
+rotation: { yaw: 0.0, roll: 35.0, pitch: 3.0 }
 
-color_names: [ 'red' ]
-# , 'blue', 'purple', 'green_L', 'green_D', 'yellow', 'orange' ]
+color_names: [ 'red', 'blue', 'green_D', 'orange', 'purple' ]
+# , , 'green_L', 'green_D', 'yellow',  ]
 red_hsv: { h_min: 1.0, h_max: 15.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
 red_2_hsv: { h_min: 355.0, h_max: 360.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
 blue_hsv: { h_min: 180.0, h_max: 215.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
 green_L_hsv: { h_min: 60.0, h_max: 95.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
-green_D_hsv: { h_min: 130.0, h_max: 170.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
-purple_hsv: { h_min: 250.0, h_max: 360.0, s_min: 0.3, s_max: 1.0, v_min: 0.3, v_max: 1.0 }
+green_D_hsv: { h_min: 100.0, h_max: 140.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
+purple_hsv: { h_min: 250.0, h_max: 360.0, s_min: 0.10, s_max: 1.0, v_min: 0.3, v_max: 1.0 }
 yellow_hsv: { h_min: 25.0, h_max: 50.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
 orange_hsv: { h_min: 15.0, h_max: 25.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 } 
 

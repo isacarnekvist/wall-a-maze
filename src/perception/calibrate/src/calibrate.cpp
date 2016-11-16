@@ -75,8 +75,9 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
 
     //*filtered_cloud = *input_cloud;
 
-    std::vector<int> indices;
-    pcl::removeNaNFromPointCloud(*filtered_cloud, *filtered_cloud, indices);
+
+    //std::vector<int> indices;
+    //pcl::removeNaNFromPointCloud(*filtered_cloud, *filtered_cloud, indices);
     /*
     // Plane segmentation
     pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);

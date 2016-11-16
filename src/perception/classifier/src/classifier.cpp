@@ -267,6 +267,8 @@ void classify(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud, std::vector<std::pair
 }
 
 std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
+    double certantiy = 150.0;
+
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_xyz (new pcl::PointCloud<pcl::PointXYZ>);
 
     cloud_xyz->points.resize(cloud_in->points.size());
@@ -286,7 +288,7 @@ std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
         // Red Ball
 
         for (size_t i = 0; i < candidates.size(); i++) {
-            if (candidates[i].second > 300) {
+            if (candidates[i].second > certantiy) {
                 return "object"; // We are too unsure
             }
 
@@ -301,11 +303,12 @@ std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
         // Blue Cube
         // Blue Triangle
         for (size_t i = 0; i < candidates.size(); i++) {
-            if (candidates[i].second > 300) {
+            if (candidates[i].second > certantiy) {
                 return "object"; // We are too unsure
             }
 
             if (candidates[i].first == "Cube") {
+                std::cout << candidates[i].second << std::endl;
                 return "Cube";
             } else if (candidates[i].first == "Triangle") {
                 return "Triangle";
@@ -317,7 +320,7 @@ std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
         // Purple Star
 
         for (size_t i = 0; i < candidates.size(); i++) {
-            if (candidates[i].second > 300) {
+            if (candidates[i].second > certantiy) {
                 return "object"; // We are too unsure
             }
 
@@ -333,7 +336,7 @@ std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
         // Yellow Ball
 
         for (size_t i = 0; i < candidates.size(); i++) {
-            if (candidates[i].second > 300) {
+            if (candidates[i].second > certantiy) {
                 return "object"; // We are too unsure
             }
 
@@ -344,12 +347,18 @@ std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
             }
         }
 
+    } else if (color == "green_D") {
+        // TODO: maybe check uncerntainty?!
+        return "Cube";
+    } else if (color == "green_L") {
+        // TODO: maybe check uncerntainty?!
+        return "Cylinder";
     } else if (color == "green") {
         // Green Cube
         // Green Cylinder
 
         for (size_t i = 0; i < candidates.size(); i++) {
-            if (candidates[i].second > 300) {
+            if (candidates[i].second > certantiy) {
                 return "object"; // We are too unsure
             }
 
@@ -382,8 +391,6 @@ std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
     //std::cout << classify(cloud_xyz) << std::endl;
     //return classify(cloud_xyz);
 }
-
-std::vector<std::string> said;
 
 void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input_cloud) {
     // Filtering input scan to increase speed of registration.
@@ -477,10 +484,10 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
             classifier::Object object = PointCloudHelper::getOptimalPickupPoint(cluster_cloud);
 
             object.y = -object.y;
-            std::cout << colorNames[i] << " " << objectType << " at: " << "X: " << object.x << ", Y: " << object.y << ", Z: " << object.z << std::endl;
+            std::cout << colorNames[i].substr(0, colorNames[i].find("_")) << " " << objectType << " at: " << "X: " << object.x << ", Y: " << object.y << ", Z: " << object.z << std::endl;
 
-            object.color = colorNames[i];
-            object.type = 1;
+            object.color = colorNames[i].substr(0, colorNames[i].find("_"));
+            object.type = objectType;
 
             // Output
 
@@ -492,14 +499,7 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
             point.header.stamp = ros::Time();
 
             object_pub.publish(object);
-            //point_pub.publish(point);
-
-            for (size_t i = 0; i < said.size(); i++) {
-                if (said[i] == objectType) {
-                    return;
-                }
-            }
-            said.push_back(objectType);
+            point_pub.publish(point);
         }
     }
 

@@ -3,6 +3,6 @@
 	<rosparam file="$(find classifier)/config/classifier_params.yaml" command="load" />
 	<node pkg="vision" type="vision" name="vision" output="screen" />
 	<node pkg="classifier" type="pointCloud_broadcaster.py" name="pointCloud_broadcaster" />
-	<!-- <include file="$(find realsense_camera)/launch/sr300_nodelet_rgbd.launch" /> -->
+	<include file="$(find realsense_camera)/launch/sr300_nodelet_rgbd.launch" />
 
 </launch>
