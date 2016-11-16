@@ -38,6 +38,8 @@ class Planner:
         self.goal = None
         self.plan = None
         self.scans = []
+        self.x = 0.0
+        self.y = 0.0
         self.wheels = rospy.Publisher('motor_controller', Twist, queue_size=1)
         self.grid_publisher = rospy.Publisher('occupancy_grid', OccupancyGrid, queue_size=1)
         self.path_publisher = rospy.Publisher('path', Path, queue_size=1)
@@ -80,9 +82,13 @@ class Planner:
                 rate.sleep()
             self.plan = self.plan[1:]
         self.abort()
-                    
+
+    def path_clear(self, a, b, c, x, y, z):
+        return True                    
 
     def line_iterator(self, x, y, final_rotation=None):
+
+        # TODO rotate to face x, y
 
         # Travel along a line to the partial target (x, y)
         original_position = np.array([self.x, self.y])
@@ -93,8 +99,14 @@ class Planner:
         print(distance, np.linalg.norm(np.array([self.x, self.y]) - original_position) + 0.05)
         while distance > np.linalg.norm(np.array([self.x, self.y]) - original_position) + 0.05:
             self.correct_position(x, y)
+            if not self.path_clear(1, 2, 3, 4, 5, 6):
+                # Actually it should go into some kind of mapping mode, wait a
+                # while and then send obstacle coords on some topic
+                break
             yield
         self.stop()
+
+        # TODO rotate to face x, y (if final_rotation)
 
     def rotation_iterator(self, theta):
         msg = Twist()
@@ -189,8 +201,18 @@ class Planner:
         self.path_publisher.publish(path)
 
     def laser_callback(self, scans):
-        for angle in range(360):
-            print(np.pi * angle / 180.0, scans.ranges[angle])
+        new_scans = []
+        for angle in range(180, 360):
+            alpha = np.pi * (angle + 88.5) / 180.0
+            dist = scans.ranges[angle]
+            if dist == np.inf:
+                continue
+            x = self.x + np.cos(alpha) * dist + 0.08
+            y = self.y + np.sin(alpha) * dist + 0.009
+            new_scans.append((x, y))
+            if angle == 270:
+                print(alpha, x, y)
+        self.scans = new_scans
 
 if __name__ == '__main__':
     rospy.init_node('planner')
