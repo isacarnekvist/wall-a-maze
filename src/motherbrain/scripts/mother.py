@@ -80,11 +80,14 @@ class Mother:
                 return
         # speak!
         self.speaker.publish('I see a {} {}'.format(data.color, data.type))
-        pickup = PointStamped()
-        pickup.point.x = data.x
-        pickup.point.y = data.y
-        pickup.point.z = data.z
-        pickup.header.frame_id = 'wheel_center'
+        
+        manipObject = Manipulation()
+        manipObject.pickupPos.point.x = data.x
+        manipObject.pickupPos.point.y = data.y
+        manipObject.pickupPos.point.z = data.z
+        manipObject.pickupPos.header.frame_id = 'wheel_center'
+        
+        manipObject.job = 'reposition'
         #self.arm.publish(pickup)
         self.possible_objects.append(do)
         print('length of po:', len(self.possible_objects))
@@ -99,6 +102,8 @@ class Mother:
             data.pose.orientation.w
         ]
         self.theta = tf.transformations.euler_from_quaternion(q)[-1] # roll
+
+    def 
 
 #	def collision(data):
 #		if(data=="Stop"):
