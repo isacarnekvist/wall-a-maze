@@ -20,6 +20,10 @@ from geometry_msgs.msg import Polygon, PoseStamped, Twist, Point32
 from grid import euler_path_plan, lines_to_grid
 
 
+class PathBlockedException(Exception):
+    pass
+
+
 def closest_theta_adjustment(current, target):
     if abs(current - target) < 2 * np.pi - abs(current - target):
         return target - current
@@ -37,6 +41,7 @@ class Planner:
         self.graph = None
         self.goal = None
         self.plan = None
+        self.updated_obstacles = True
         self.scans = []
         self.x = 0.0
         self.y = 0.0
@@ -82,8 +87,18 @@ class Planner:
                 final_rotation = self.goal.theta
             else:
                 final_rotation = None
-            for _ in self.line_iterator(x, y, final_rotation):
-                rate.sleep()
+            try:
+                for _ in self.line_iterator(x, y, final_rotation):
+                    rate.sleep()
+            except PathBlockedException as e:
+                aborted_goal = deepcopy(self.goal)
+                self.abort()
+                sleep(3.0)
+                self.updated_obstacles = False
+                self.publish_seen_obstacles()
+                while not self.updated_obstacles:
+                    sleep(0.1)
+                self.target_callback(aborted_goal)
             self.plan = self.plan[1:]
         self.abort()
 
@@ -95,11 +110,9 @@ class Planner:
         return True                    
 
     def publish_seen_obstacles(self):
-        x, y = self.plan[0]
-        target_distance = np.linalg.norm(np.array([x - self.x, y - self.y]))
         msg = Polygon()
         for x, y in self.scans:
-            if -0.12 < y < 0.12 and 0 < x < min(0.4, target_distance):
+            if -0.3 < y < 0.3 and 0 < x < 1.2:
                 msg.points.append(
                     Point32(
                         x=self.x + x * np.cos(self.theta) - y * np.sin(self.theta),
@@ -116,7 +129,7 @@ class Planner:
             yield
         self.stop()
 
-        sleep(1.0)
+        sleep(2.0)
 
         # Travel along a line to the partial target (x, y)
         original_position = np.array([self.x, self.y])
@@ -126,33 +139,21 @@ class Planner:
         while distance > np.linalg.norm(np.array([self.x, self.y]) - original_position) + 0.05:
             self.correct_position(x, y)
             if not self.path_clear(x, y):
-                print('Path not clear, mapping seen obstacle...')
-                self.stop()
-                sleep(3.0)
-                self.publish_seen_obstacles()
-                print('Done')
-                # Actually it should go into some kind of mapping mode, wait a
-                # while and then send obstacle coords on some topic
-                self.target_callback(self.goal)
-                return
+                raise PathBlockedException()
             yield
         self.stop()
 
-        sleep(1.0)
+        sleep(2.0)
 
         # TODO rotate to face x, y (if final_rotation)
         if final_rotation is not None:
-            print('setting final rotation')
             for _ in self.rotation_iterator(final_rotation):
                 yield
             self.stop()
-            sleep(1.0)
+            sleep(2.0)
 
     def rotation_iterator(self, theta):
         theta_correction = closest_theta_adjustment(self.theta, theta)
-        print('current theta: {}, target theta: {} correction: {}'.format(
-            self.theta, theta, theta_correction
-        ))
         msg = Twist()
         msg.angular.z = 0.8 * np.sign(theta_correction)
         self.wheels.publish(msg)
@@ -169,6 +170,7 @@ class Planner:
     """For aborting a current goal and stopping the robot"""
     def abort(self):
         self.stop()
+        self.plan = []
         self.goal = None
 
     """For just stopping the robot, not aborting a current goal"""
@@ -185,12 +187,6 @@ class Planner:
 
     def obstacles_callback(self, data):
         print('Collecting obstacles')
-        if self.goal:
-            print('copying previous goal and recreating grid/map')
-            previous_goal = deepcopy(self.goal)
-        else:
-            previous_goal = None
-        self.abort()
         lines = []
         for i in range(len(data.points) / 2):
             p1 = data.points[2 * i]
@@ -199,9 +195,7 @@ class Planner:
         self.grid = lines_to_grid(lines)
         self.grid.expand_obstacles(0.19)
         self.graph = self.grid.to_graph()
-        if previous_goal is not None:
-            print('re-sending previous target')
-            self.target_callback(previous_goal)
+        self.updated_obstacles = True
 
     def position_callback(self, data):
         self.x = data.pose.position.x
