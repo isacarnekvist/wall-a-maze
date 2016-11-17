@@ -15,7 +15,7 @@ from planner.srv import PlannerStatus
 from planner.msg import PlannerTarget
 from nav_msgs.msg import OccupancyGrid, Path
 from sensor_msgs.msg import LaserScan
-from geometry_msgs.msg import Polygon, PoseStamped, Twist
+from geometry_msgs.msg import Polygon, PoseStamped, Twist, Point32
 
 from grid import euler_path_plan, lines_to_grid
 
@@ -43,6 +43,7 @@ class Planner:
         self.wheels = rospy.Publisher('motor_controller', Twist, queue_size=1)
         self.grid_publisher = rospy.Publisher('occupancy_grid', OccupancyGrid, queue_size=1)
         self.path_publisher = rospy.Publisher('path', Path, queue_size=1)
+        self.new_obstacle_publisher = rospy.Publisher('seen_obstacles', Polygon, queue_size=1)
         print('Started planner server')
 
     def target_callback(self, goal):
@@ -53,7 +54,7 @@ class Planner:
             self.abort()
             return
 
-        rate = rospy.Rate(5)
+        rate = rospy.Rate(100)
 
         # Convenience adjustments
         while not 0 <= self.goal.theta <= 2 * np.pi:
@@ -77,47 +78,90 @@ class Planner:
         for step, (x, y) in enumerate(self.plan):
             if self.goal is None: # while we have a goal / we were not aborted
                 break
-            print(x, y)
-            for _ in self.line_iterator(x, y, step == steps - 1):
+            if step == steps - 1:
+                final_rotation = self.goal.theta
+            else:
+                final_rotation = None
+            for _ in self.line_iterator(x, y, final_rotation):
                 rate.sleep()
             self.plan = self.plan[1:]
         self.abort()
 
-    def path_clear(self, a, b, c, x, y, z):
+    def path_clear(self, x, y):
+        target_distance = np.linalg.norm(np.array([x - self.x, y - self.y]))
+        for x, y in self.scans:
+            if -0.12 < y < 0.12 and 0 < x < min(0.4, target_distance):
+                return False
         return True                    
+
+    def publish_seen_obstacles(self):
+        x, y = self.plan[0]
+        target_distance = np.linalg.norm(np.array([x - self.x, y - self.y]))
+        msg = Polygon()
+        for x, y in self.scans:
+            if -0.12 < y < 0.12 and 0 < x < min(0.4, target_distance):
+                msg.points.append(
+                    Point32(
+                        x=self.x + x * np.cos(self.theta) - y * np.sin(self.theta),
+                        y=self.y + x * np.sin(self.theta) + y * np.cos(self.theta),
+                    )
+                )
+        self.new_obstacle_publisher.publish(msg)
 
     def line_iterator(self, x, y, final_rotation=None):
 
         # TODO rotate to face x, y
+        target_theta = atan2(y - self.y, x - self.x)
+        for _ in self.rotation_iterator(target_theta):
+            yield
+        self.stop()
+
+        sleep(1.0)
 
         # Travel along a line to the partial target (x, y)
         original_position = np.array([self.x, self.y])
         target = np.array([x, y])
         distance = np.linalg.norm(target - original_position)
         #                    v distance traveled + 5 cm
-        print('original distance and current distance travelled:')
-        print(distance, np.linalg.norm(np.array([self.x, self.y]) - original_position) + 0.05)
         while distance > np.linalg.norm(np.array([self.x, self.y]) - original_position) + 0.05:
             self.correct_position(x, y)
-            if not self.path_clear(1, 2, 3, 4, 5, 6):
+            if not self.path_clear(x, y):
+                print('Path not clear, mapping seen obstacle...')
+                self.stop()
+                sleep(3.0)
+                self.publish_seen_obstacles()
+                print('Done')
                 # Actually it should go into some kind of mapping mode, wait a
                 # while and then send obstacle coords on some topic
-                break
+                self.target_callback(self.goal)
+                return
             yield
         self.stop()
 
+        sleep(1.0)
+
         # TODO rotate to face x, y (if final_rotation)
+        if final_rotation is not None:
+            print('setting final rotation')
+            for _ in self.rotation_iterator(final_rotation):
+                yield
+            self.stop()
+            sleep(1.0)
 
     def rotation_iterator(self, theta):
-        msg = Twist()
         theta_correction = closest_theta_adjustment(self.theta, theta)
-        print('Correcting theta {} radians'.format(theta_correction))
-        msg.angular.z = 0.80 * np.sign(theta_correction)
+        print('current theta: {}, target theta: {} correction: {}'.format(
+            self.theta, theta, theta_correction
+        ))
+        msg = Twist()
+        msg.angular.z = 0.8 * np.sign(theta_correction)
+        self.wheels.publish(msg)
+        time_needed = theta_correction / abs(msg.angular.z)
         time_needed = abs(theta_correction / msg.angular.z)
         secs_needed = int(time_needed)
-        nsecs_needed = int((time_needed - secs_needed) * 1e9)
+        err_correction = 1.20
+        nsecs_needed = int((time_needed - secs_needed) * err_correction * 1e9)
         stop_time = rospy.Duration(secs_needed, nsecs_needed)
-        self.wheels.publish(msg)
         start_time = rospy.Time.now()
         while rospy.Time.now() < start_time + stop_time:
             yield
@@ -188,7 +232,11 @@ class Planner:
         og.info.origin.position.x = -self.grid.padding
         og.info.origin.position.y = -self.grid.padding
         og.data = 100 * self.grid._grid.flatten()
-        self.grid_publisher.publish(og)
+        try:
+            self.grid_publisher.publish(og)
+        except rospy.exceptions.ROSSerializationException:
+            # Don't know why this happens, just return and be happy if it works later
+            return
 
         path = Path()
         path.header.frame_id = '/map'
@@ -207,11 +255,9 @@ class Planner:
             dist = scans.ranges[angle]
             if dist == np.inf:
                 continue
-            x = self.x + np.cos(alpha) * dist + 0.08
-            y = self.y + np.sin(alpha) * dist + 0.009
+            x = np.cos(alpha) * dist + 0.08
+            y = np.sin(alpha) * dist + 0.009
             new_scans.append((x, y))
-            if angle == 270:
-                print(alpha, x, y)
         self.scans = new_scans
 
 if __name__ == '__main__':

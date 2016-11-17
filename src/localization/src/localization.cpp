@@ -30,10 +30,10 @@ public:
     ~Localization();
     void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg);
     void odometry_callback(const geometry_msgs::Twist::ConstPtr &msg);
+    void new_obstacles_callback(const geometry_msgs::Polygon::ConstPtr &msg);
     void publish_pose_estimate();
     void publish_map_visualization();
     void publish_updated_obstacles();
-    float certainty;
     ParticleFilter *particle_filter; /* Doesn't work without '*' and new */
 private:
     vector<tuple<float, float> > scans;
@@ -48,7 +48,6 @@ private:
 };
 
 Localization::Localization(ros::NodeHandle &node_handle) {
-    certainty = 0.0;
     recieved_laser = false;
     recieved_odometry = false;
     position_publisher = node_handle.advertise<geometry_msgs::PoseStamped>("/position", 10);
@@ -78,18 +77,7 @@ void Localization::publish_pose_estimate() {
     for (int i = 0; i < scans.size(); i += 4) {
         some_scans_n_shit.push_back(scans[i]);
     }
-    certainty = particle_filter->resample(map, some_scans_n_shit);
-    if (certainty > 1e6) { /* Don't do this for now */
-        bool new_obstacles = map.update_from_laser(
-            scans,
-            particle_filter->mean_estimate_x(),
-            particle_filter->mean_estimate_y(),
-            particle_filter->mean_estimate_theta()
-        );
-        if (new_obstacles) {
-            publish_updated_obstacles();
-        }
-    }
+    particle_filter->resample(map, some_scans_n_shit);
 
     /* Publish */
     geometry_msgs::PoseStamped pose;
@@ -186,8 +174,13 @@ void Localization::odometry_callback(const geometry_msgs::Twist::ConstPtr &msg) 
     } else {
         recieved_odometry = true;
     }
-    particle_filter->move(msg->linear.x, msg->angular.z, time_delta, certainty);
+    particle_filter->move(msg->linear.x, msg->angular.z, time_delta);
     odometry_stamp = ros::Time::now();
+}
+
+void Localization::new_obstacles_callback(const geometry_msgs::Polygon::ConstPtr &msg) {
+    map.update_from_laser(msg);
+    publish_updated_obstacles();
 }
 
 void Localization::laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) {
@@ -221,6 +214,12 @@ int main(int argc, char **argv) {
             2 * M_PI    /* theta_max */
         );
     }
+    ros::Subscriber new_obstacles_subscriber = node_handle.subscribe(
+        "/seen_obstacles",
+        1,
+        &Localization::new_obstacles_callback,
+        &localization
+    );
     ros::Subscriber laser_subscriber = node_handle.subscribe(
         "/scan",
         10,

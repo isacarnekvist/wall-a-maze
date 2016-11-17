@@ -19,12 +19,12 @@ using namespace std;
 default_random_engine random_engine;
 normal_distribution<float> normal_sampler (0, 1);
 
-void Particle::move(float linear, float angular, float delta_seconds, float certainty) {
+void Particle::move(float linear, float angular, float delta_seconds) {
     /* Here are parameters that probably will need tuning! */
     float k_linear  = (
         0.02 * abs(linear) +
         0.01 * abs(angular) +
-        0.75 * max(0.3 - certainty, 0.0) + 0.1
+        0.1
     );
     float k_angular = (0.05 * abs(linear) + 0.01 * abs(angular) + 0.1);
 
@@ -90,9 +90,9 @@ ParticleFilter::ParticleFilter(
     sampleParticles(n_particles);
 }
 
-void ParticleFilter::move(float linear, float angular, float delta_seconds, float certainty) {
+void ParticleFilter::move(float linear, float angular, float delta_seconds) {
     for (Particle &p : particles) {
-        p.move(linear, angular, delta_seconds, certainty);
+        p.move(linear, angular, delta_seconds);
     }
 }
 

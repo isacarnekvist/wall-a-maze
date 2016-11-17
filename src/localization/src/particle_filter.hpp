@@ -9,7 +9,7 @@ using namespace std;
 class Particle {
 public:
     Particle(float x, float y, float theta) : x(x), y(y), theta(theta) {};
-    void move(float linear, float angular, float delta_seconds, float certainty);
+    void move(float linear, float angular, float delta_seconds);
     float x, y, theta;
     float likelihood(const Map &map, const vector<tuple<float, float> > &scans);
     float latest_score;
@@ -22,7 +22,7 @@ class ParticleFilter {
 public:
     ParticleFilter(int n_particles, float min_x, float max_x, float min_y, float max_y, float min_theta, float max_theta);
     float resample(const Map &map, const vector<tuple<float, float> > &scans);
-    void move(float linear, float angular, float delta_seconds, float certainty);
+    void move(float linear, float angular, float delta_seconds);
     void printParticles();
     float mean_estimate_x();
     float mean_estimate_y();

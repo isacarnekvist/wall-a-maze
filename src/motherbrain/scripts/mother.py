@@ -103,8 +103,6 @@ class Mother:
         ]
         self.theta = tf.transformations.euler_from_quaternion(q)[-1] # roll
 
-    def 
-
 #	def collision(data):
 #		if(data=="Stop"):
 #			mother.stop()

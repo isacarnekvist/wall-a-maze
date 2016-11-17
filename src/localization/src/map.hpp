@@ -4,6 +4,9 @@
 #include <tuple>
 #include <vector>
 
+#include <geometry_msgs/Point32.h>
+#include <geometry_msgs/Polygon.h>
+
 typedef struct Wall {
     float x1, y1, x2, y2;
 } Wall;
@@ -13,7 +16,7 @@ public:
     Map();
     float distance(float x, float y, float angle) const;
     bool point_approx_on_wall(float x, float y);
-    bool update_from_laser(std::vector<std::tuple<float, float> > scans, float x, float y, float theta);
+    bool update_from_laser(const geometry_msgs::Polygon::ConstPtr &msg);
     std::vector<Wall> walls;
     float min_x;
     float max_x;

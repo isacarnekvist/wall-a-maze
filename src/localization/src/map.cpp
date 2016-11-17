@@ -53,46 +53,24 @@ float Map::distance(float x0, float y0, float angle) const {
 }
 
 /* Change to return bool if something was updated? */
-bool Map::update_from_laser(vector<tuple<float, float> > scans, float x, float y, float theta) {
+bool Map::update_from_laser(const geometry_msgs::Polygon::ConstPtr &msg) {
     vector<tuple<float, float> > cartesian_scans = vector<tuple<float, float> >();
-    for (tuple<float, float> &t : scans) {
-        float alpha = get<0>(t);
-        float dist = get<1>(t);
-        cartesian_scans.push_back(make_tuple(x + dist * cos(alpha + theta), y + dist * sin(alpha + theta)));
+    cout << "Iterating points found to obstruct path:" << endl;
+    if (msg->points.size() == 0) {
+        /* Unbelievable I have to do this check? */
+        return false;
     }
-    bool updated = false;
-    vector<Wall> new_walls = detect_walls(cartesian_scans, x, y, 1.2);
-    for (Wall &nw : new_walls) {
-        bool matched_wall = false;
-        for (Wall &ow : walls) {
-            tuple<int, Wall*> t = wall_comparison(ow, nw);
-            int wall_status = get<0>(t);
-            Wall *w = get<1>(t);
-            switch (wall_status) {
-                case EXTEND:
-                    cout << "updating earlier wall" << endl;
-                    ow = nw;
-                    matched_wall = true;
-                    updated = true;
-                    break;
-                case INSIDE:
-                    cout << "wall found inside other wall" << endl;
-                    matched_wall = true;
-                    break;
-                case OUTSIDE:
-                    break;
-            }
-            if (matched_wall) break;
-        }
-        if (matched_wall) {
-            break;
-        } else {
-            cout << "found new wall" << endl;
-            walls.push_back(nw);
-            updated = true;
-        }
+    for (const geometry_msgs::Point32 &p : msg->points) {
+        cout << "point: " << p.x << ", " << p.y << endl;
+        cartesian_scans.push_back(make_tuple(p.x, p.y));
     }
-    return updated;
+    // These last arguments does not make sence since cartesian_scans
+    // are now in map frame, but ok for now
+    vector<Wall> new_walls = detect_walls(cartesian_scans, 0, 0, 10); 
+    for (Wall &w : new_walls) {
+        walls.push_back(w);
+    }
+    return true;
 }
 
 void Map::readWalls() {
