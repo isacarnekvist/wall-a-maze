@@ -7,16 +7,18 @@ import numpy as np
 
 from uarm.srv import *
 from sensor_msgs.msg import JointState
-from geometry_msgs.msg import Point, PointStamped
+from geometry_msgs.msg import Point, PointStamped, Twist
 from std_msgs.msg import Header, String
 from manipulation.msg import Manipulation
+
 
 
 
 class Manipulate():
 
 	def __init__(self):
-		self.pub = rospy.Publisher('arm_state', String, queue_size=1) 
+		self.wheels_pub = rospy.Publisher('motor_controller', Twist, queue_size=1)
+		self.state_pub = rospy.Publisher('manipulation_state', String, queue_size=1) 
 		
 		rospy.init_node('move_arm_client')
 	
@@ -52,7 +54,7 @@ class Manipulate():
 
 		# Other
 		self.inOperation = False
-		
+		self.inPickupPos = False
 		
 		# EEF position
 		self.eefJointPos_current = JointState()
@@ -104,10 +106,11 @@ class Manipulate():
 			print "No job received"
 			return
 		else:
-			while self.job != 'cancel' and self.inOperation == True:
-				
-				if self.isPickedUp == False:
-					self.pickup()	# Publish message inside that it was picked up	
+			while self.job != 'cancel' and self.inOperation == True: # ToDo: Restructure such that checked in parallel.
+				if self.inPickupPos == False:
+					self.toPickupPos()
+				elif self.isPickedUp == False:
+					self.pickup()	
 				elif self.job == 'reposition':
 					self.reposition()
 				elif self.job =='carryout':
@@ -147,6 +150,31 @@ class Manipulate():
 					self.inOperation = False
 					print "Dropped object ! "
 		
+		
+	def toPickupPos(self):
+		# Simple heuristic control:
+		# 1. Rotate until object in line of sight and y=0
+		# 2. Move in x until in pickable/preferred x range
+		
+		yTol = 0.03
+		xTol = 0.03
+		xAim = 0.24
+		
+		move_angular = Twist()
+		move_linear = Twist()
+
+		
+		while abs(self.pickupPos_wheel.y) > yTol:
+			move_angular.angular.z = np.sign(self.pickupPos_wheel.y)*0.05 # m/s
+			self.wheels_pub.publish(move_angular)
+			
+		while abs(self.pickupPos_wheel.x-xAim) > xTol:
+			move_linear.linear.x = np.sign(self.pickupPos_wheel.x)*0.05 # m/s
+			self.wheels_pub.publish(move_linear)
+			
+		self.inPickupPos = True
+		
+		
 	
 	def mother_callback(self, data):
 		if data is not None:
@@ -177,6 +205,7 @@ class Manipulate():
 		else:
 			print "Mother topic empty"
 
+				
 	
 	def joint_callback(self, data):
 		self.eefJointPos_current = data
@@ -393,7 +422,8 @@ class Manipulate():
 		
 		if atGoal_state.error == False:
 			print "Changed pickup status to picked up !"
-			self.isPickedUp = True	
+			self.isPickedUp = True
+			self.state_pub('pickedUp')	
 	
 		# Move back up
 		aboveGoal_state = self.moveToPos_client(aboveGoal_pos, self.move_mode, self.moveDuration_abs, self.interpol_linear)
