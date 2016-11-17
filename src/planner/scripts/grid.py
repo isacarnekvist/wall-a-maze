@@ -3,6 +3,7 @@ import Queue
 from copy import deepcopy
 
 import numpy as np
+from scipy.signal import convolve2d
 import networkx
 
 
@@ -37,15 +38,16 @@ class OccupancyGrid:
     def expand_obstacles(self, w):
         if w > self.padding:
             raise ValueError('Padding needs to be > expand size atm')
+        width = 4 * int(w / self.cell_width / 2) + 1
+        kernel = np.zeros((width, width))
+        for i in range(width):
+            for j in range(width):
+                if np.sqrt((i - width / 2) ** 2 + (j - width / 2) ** 2) < width / 2:
+                    kernel[i, j] = 1.0
         grid_copy = self._grid + 0
-        for degree in np.linspace(0, 2 * np.pi, 180):
-            x_displace = int(np.cos(degree) * w / self.cell_width)
-            y_displace = int(np.sin(degree) * w / self.cell_width)
-            x_shifted = np.roll(grid_copy, x_displace, axis=0)
-            shifted = np.roll(x_shifted, y_displace, axis=1)
-            self._grid += shifted
-                    
+        self._grid = convolve2d(self._grid, kernel, mode='same')
         self._grid[self._grid > 0] = 1
+        # self._grid /= self._grid.max()
         
     def occupied(self, x_ind, y_ind):
         return self._grid[y_ind, x_ind] == 1.0
