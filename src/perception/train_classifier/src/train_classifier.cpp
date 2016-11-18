@@ -1,6 +1,12 @@
+// ROS
 #include <ros/ros.h>
-
 #include "sensor_msgs/PointCloud2.h"
+
+// Own
+#include <perception_helper/point_cloud_helper.h>
+#include <perception_helper/vfh_helper.h>
+
+// PCL
 #include <pcl_ros/point_cloud.h>
 
 #include <iostream>
@@ -11,13 +17,6 @@
 
 #include <string>
 
-//#include <pcl/features/cvfh.h>
-//#include <pcl/features/our_cvfh.h>
-#include <pcl/features/vfh.h>
-
-#include <pcl/features/normal_3d.h>
-#include <pcl/filters/approximate_voxel_grid.h>
-#include <pcl/filters/voxel_grid.h>
 
 #include <flann/flann.h>
 #include <flann/io/hdf5.h>
@@ -46,8 +45,22 @@ std::string training_data_list_file_name = "training_data.list";
 
 std::string whatTypeOfData;
 
+double normalRadiusSearch;
+bool normalizeBins;
+double EPSAngle;
+double maxCurv;
+
+std::vector<double> pointSize;
+
 void initParams(ros::NodeHandle n) {
+    n.getParam("/radiusSearch", normalRadiusSearch);
+    n.getParam("/normalizeBins", normalizeBins);
+    n.getParam("/EPSAngle", EPSAngle);
+    n.getParam("/maxCurv", maxCurv);
+
     n.getParam("/whatTypeOfData", whatTypeOfData);
+
+    n.getParam("/pointSize", pointSize);
 
     views_dir = ros::package::getPath("train_classifier") + "/Data/Views/" + whatTypeOfData;
     vfhs_dir = ros::package::getPath("train_classifier") + "/Data/VFHS/" + whatTypeOfData;
@@ -114,66 +127,9 @@ void loadViews(std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> & views, std::st
     }
 }
 
-void computeCloudNormals(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud, pcl::PointCloud<pcl::Normal>::Ptr & cloud_normals) {
-    // Create the normal estimation class, and pass the input dataset to it
-    pcl::NormalEstimation<pcl::PointXYZ, pcl::Normal> ne;
-    ne.setInputCloud (cloud);
-
-    // Create an empty kdtree representation, and pass it to the normal estimation object.
-    // Its content will be filled inside the object, based on the given input dataset (as no other search surface is given).
-    pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ> ());
-    ne.setSearchMethod (tree);
-
-
-    // Use all neighbors in a sphere of radius 3cm
-    ne.setRadiusSearch (0.03);
-
-    // Compute the features
-    ne.compute (*cloud_normals);
-
-    // cloud_normals->points.size () should have the same size as the input cloud->points.size ()*
-}
-
-void computeVFHSignature(pcl::PointCloud<pcl::VFHSignature308>::Ptr & vfhs, pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud) {
-    pcl::VFHEstimation<pcl::PointXYZ, pcl::Normal, pcl::VFHSignature308> cvfh;
-    cvfh.setInputCloud(cloud);
-
-    // Get normals for cloud
-    pcl::PointCloud<pcl::Normal>::Ptr cloud_normals (new pcl::PointCloud<pcl::Normal>);
-    computeCloudNormals(cloud, cloud_normals);
-
-    cvfh.setInputNormals(cloud_normals);
-
-    // Create an empty kdtree representation, and pass it to the FPFH estimation object.
-    // Its content will be filled inside the object, based on the given input dataset (as no other search surface is given).
-    pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ> ());
-
-    cvfh.setSearchMethod(tree);
-
-    //cvfh.setCurvatureThreshold(0.025f);
-    //cvfh.setClusterTolerance(0.015f);   // 1.5 cm, three times the leaf size
-    //cvfh.setEPSAngleThreshold(0.13f);
-
-    //cvfh.setKSearch(100);   // ???
-
-    //cvfh.setEPSAngleThreshold(angle);
-    //cvfh.setCurvatureThreshold(max_curv);
-    cvfh.setNormalizeBins(false);
-
-    cvfh.compute(*vfhs);
-
-    /*
-    std::cout << "output points.size (): " << vfhs->points.size () << std::endl; // This outputs 1 - should be 397!
-
-    // Display and retrieve the shape context descriptor vector for the 0th point.
-    pcl::VFHSignature308 descriptor = vfhs->points[0];
-    std::cout << descriptor << std::endl;
-    */
-}
-
 void train() {
     for (size_t i = 0; i < objects.size(); i++) {
-        std::cout << "Processing: " << objects[i] << std::endl;
+        std::cout << "Processing [" << (i+1) << "/" << objects.size() << "]: " << objects[i] << std::endl;
 
         // Create directory
         boost::filesystem::path dir(vfhs_dir + "/" + objects[i]);
@@ -186,20 +142,12 @@ void train() {
 
         // For each view calculate CVFH
         for (size_t j = 0; j < views.size(); j++) {
+            std::cout << "Processing view " << (j+1) << " of " << views.size() << std::endl;
             pcl::PointCloud<pcl::VFHSignature308>::Ptr vfhs (new pcl::PointCloud<pcl::VFHSignature308>);
-            // TODO: Maybe do voxel grid first?!
-            /*
-            pcl::ApproximateVoxelGrid<pcl::PointXYZ> approximate_voxel_filter;
-            approximate_voxel_filter.setLeafSize (0.005, 0.005, 0.005);
-            approximate_voxel_filter.setInputCloud (views[j]);
-            approximate_voxel_filter.filter (*views[j]);
-            */
-            pcl::VoxelGrid<pcl::PointXYZ> approximate_voxel_filter;
-            approximate_voxel_filter.setLeafSize (0.005, 0.005, 0.005); //(0.25, 0.25, 0.25);
-            approximate_voxel_filter.setInputCloud (views[j]);
-            approximate_voxel_filter.filter (*views[j]);
 
-            computeVFHSignature(vfhs, views[j]);
+            PointCloudHelper::resizePoints(views[j], views[j], pointSize[0], pointSize[1], pointSize[2]);
+
+            VFHHelper::computeVFHSignature(vfhs, views[j], normalRadiusSearch, normalizeBins, EPSAngle, maxCurv);
 
             // Save VFH signature to file
             // TODO: Maybe save pose too?!
