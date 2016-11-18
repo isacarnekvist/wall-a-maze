@@ -46,6 +46,8 @@ class Mother:
         self.y = 0.0
         self.theta = 0.0
         self.possible_objects = []
+        # Give ROS a little time to acknowledge publisher, especially for planner
+        sleep(0.5)
 
     def run(self, x=None, y=None, theta=None):
         self.stop()

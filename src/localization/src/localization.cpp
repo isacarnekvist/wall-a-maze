@@ -13,6 +13,7 @@
 #include <geometry_msgs/Point32.h>
 #include <geometry_msgs/Polygon.h>
 #include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <planner/PlannerStatus.h>
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
@@ -31,6 +32,7 @@ public:
     void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg);
     void odometry_callback(const geometry_msgs::Twist::ConstPtr &msg);
     void new_obstacles_callback(const geometry_msgs::Polygon::ConstPtr &msg);
+    void initial_pose_callback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr &msg);
     void publish_pose_estimate();
     void publish_map_visualization();
     void publish_updated_obstacles();
@@ -109,6 +111,7 @@ void Localization::publish_pose_estimate() {
 }
 
 void Localization::publish_updated_obstacles() {
+    cout << "Publishing map" << endl;
     geometry_msgs::Polygon res;
     geometry_msgs::Point32 p1;
     for (Wall w : map.walls) {
@@ -183,6 +186,14 @@ void Localization::new_obstacles_callback(const geometry_msgs::Polygon::ConstPtr
     publish_updated_obstacles();
 }
 
+void Localization::initial_pose_callback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr &msg) {
+    for (Particle &p : particle_filter->particles) {
+        p.x = msg->pose.pose.position.x;
+        p.y = msg->pose.pose.position.y;
+        p.theta = rand() % 360 / (2 * 3.14);
+    }
+}
+
 void Localization::laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) {
     // TODO Store timestamp and publish certainty with this timestamp
     scans = vector<tuple<float, float> >();
@@ -220,6 +231,12 @@ int main(int argc, char **argv) {
         &Localization::new_obstacles_callback,
         &localization
     );
+    ros::Subscriber initial_pose_subcriber = node_handle.subscribe(
+        "/initialpose",
+        1,
+        &Localization::initial_pose_callback,
+        &localization
+    );
     ros::Subscriber laser_subscriber = node_handle.subscribe(
         "/scan",
         10,
@@ -236,8 +253,11 @@ int main(int argc, char **argv) {
     ros::ServiceClient planner_status_client = node_handle.serviceClient<planner::PlannerStatus>("planner_ready");
     planner_status_client.waitForExistence();
 
-    bool temp_updated_map = false;
+    /* Give the planner some extra time to be ready for obstacle update */
     ros::Rate rate (10);
+    for (int i = 0; i < 20; i++) rate.sleep();
+
+    bool temp_updated_map = false;
     while (ros::ok()) {
         ros::spinOnce();
         rate.sleep();
