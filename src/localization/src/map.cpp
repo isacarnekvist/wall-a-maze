@@ -11,6 +11,7 @@ using namespace std;
 
 Map::Map() {
     walls = vector<Wall>();
+    pickable_objects = vector<PickableObject>();
     this->min_x = INF;
     this->max_x = -INF;
     this->min_y = INF;
