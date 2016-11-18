@@ -44,7 +44,6 @@
   <build_depend>rospy</build_depend>
   <build_depend>std_msgs</build_depend>
   <build_depend>ras_uarm</build_depend>
-  <build_depend>uarm</build_depend>
   <build_depend>tf</build_depend>
   <build_depend>actionlib</build_depend>
   <build_depend>actionlib_msgs</build_depend>
@@ -54,7 +53,6 @@
   <run_depend>rospy</run_depend>
   <run_depend>std_msgs</run_depend>
   <run_depend>ras_uarm</run_depend>
-  <run_depend>uarm</run_depend>
   <run_depend>tf</run_depend>
   <run_depend>actionlib</run_depend>
   <run_depend>actionlib_msgs</run_depend>
