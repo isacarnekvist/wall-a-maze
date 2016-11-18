@@ -4,6 +4,8 @@
 	<rosparam file="$(find classifier)/config/vfh_params.yaml" command="load" />
 	<node pkg="classifier" type="classifier" name="classifier" output="screen" />
 	<node pkg="classifier" type="pointCloud_broadcaster.py" name="pointCloud_broadcaster" />
-	<!-- <include file="$(find realsense_camera)/launch/sr300_nodelet_rgbd.launch" /> -->
+	<include file="$(find realsense_camera)/launch/sr300_nodelet_rgbd.launch" />
+	
+	<node name="config" pkg="classifier" type="cam.sh" />
 
 </launch>

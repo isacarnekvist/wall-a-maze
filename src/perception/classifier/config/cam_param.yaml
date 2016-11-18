@@ -9,7 +9,7 @@ dictitems:
   color_hue: 0
   color_saturation: 64
   color_sharpness: 50
-  color_white_balance: 3500
+  color_white_balance: 5000
   enable_depth: true
   f200_accuracy: 1
   f200_confidence_threshold: 3
