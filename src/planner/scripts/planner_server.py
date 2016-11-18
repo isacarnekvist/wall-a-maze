@@ -20,6 +20,38 @@ from geometry_msgs.msg import Polygon, PoseStamped, Twist, Point32
 from grid import euler_path_plan, lines_to_grid
 
 
+IDLE = 0
+EXECUTING = 1
+REPLANNING = 2
+STATE_STR = {
+    IDLE: 'idle',
+    EXECUTING: 'executing',
+    REPLANNING: 'replanning'
+}
+
+class StateMachine:
+    
+    def __init__(self):
+        self._state = IDLE
+        self._allowed_transitions = {
+            IDLE: {EXECUTING, IDLE},
+            EXECUTING: {EXECUTING, IDLE, REPLANNING},
+            REPLANNING: {IDLE, EXECUTING}
+        }
+
+    @property
+    def state(self):
+        return self._state
+
+    def transition_to(self, state):
+        if state in self._allowed_transitions[self._state]:
+            print('request for state transition from {} to {}'.format(STATE_STR[self._state], STATE_STR[state]))
+            self._state = state
+        else:
+            planner.abort()
+            raise ValueError('Illegal transition in planner!')
+
+
 class PathBlockedException(Exception):
     pass
 
@@ -41,6 +73,7 @@ class Planner:
         self.graph = None
         self.goal = None
         self.plan = None
+        self.state_machine = StateMachine()
         self.updated_obstacles = True
         self.scans = []
         self.x = 0.0
@@ -54,10 +87,18 @@ class Planner:
     def target_callback(self, goal):
         self.abort()
         self.goal = goal
+        if self.goal is None:
+            # This is not supposed to happen
+            self.state_machine.transition_to(IDLE)
+            self.abort()
+            raise ValueError('goal was None')
         if self.goal.is_abort_action:
+            self.state_machine.transition_to(IDLE)
             print('target was canceled')
             self.abort()
             return
+
+        self.state_machine.transition_to(EXECUTING)
 
         rate = rospy.Rate(100)
 
@@ -68,6 +109,7 @@ class Planner:
         if self.grid is None or self.graph is None:
             self.abort()
             raise ValueError('Have not recieved occupancy grid!, ignoring request')
+            self.state_machine.transition_to(IDLE)
             return
 
         print('requesting euler plan...')
@@ -76,12 +118,13 @@ class Planner:
         except IndexError:
             print('Current position or goal outside occupancy grid?', file=sys.stderr)
             self.abort()
+            self.state_machine.transition_to(IDLE)
             return
 
         print('executing euler plan')
         steps = len(self.plan)
         for step, (x, y) in enumerate(self.plan):
-            if self.goal is None: # while we have a goal / we were not aborted
+            if self.state_machine.state in {IDLE, REPLANNING}:
                 break
             if step == steps - 1:
                 final_rotation = self.goal.theta
@@ -91,6 +134,11 @@ class Planner:
                 for _ in self.line_iterator(x, y, final_rotation):
                     rate.sleep()
             except PathBlockedException as e:
+                if self.state_machine.state == EXECUTING:
+                    self.state_machine.transition_to(REPLANNING)
+                else:
+                    self.abort()
+                    return
                 aborted_goal = deepcopy(self.goal)
                 self.abort()
                 sleep(3.0)
@@ -98,14 +146,27 @@ class Planner:
                 self.publish_seen_obstacles()
                 while not self.updated_obstacles:
                     sleep(0.1)
-                self.target_callback(aborted_goal)
+                if self.state_machine.state == REPLANNING:
+                    self.target_callback(aborted_goal)
+                else:
+                    return
             self.plan = self.plan[1:]
+        self.state_machine.transition_to(IDLE)
         self.abort()
 
     def path_clear(self, x, y):
+        # Temporary!
+        return True
         target_distance = np.linalg.norm(np.array([x - self.x, y - self.y]))
+        w = 0.15
         for x, y in self.scans:
-            if -0.12 < y < 0.12 and 0 < x < min(0.4, target_distance):
+            if x < 0:
+                continue
+
+            # change to some inverse cone (pointy further away)
+            if np.sqrt(min((1.0/2.0) * x, target_distance + w) ** 2 + y ** 2) < w:
+                print('aborting due to laser measurement (robot frame):', x, y)
+                print('spherical distance:', np.sqrt((x - 0.03) ** 2 + y ** 2))
                 return False
         return True                    
 
@@ -136,7 +197,7 @@ class Planner:
         target = np.array([x, y])
         distance = np.linalg.norm(target - original_position)
         #                    v distance traveled + 5 cm
-        while distance > np.linalg.norm(np.array([self.x, self.y]) - original_position) + 0.05:
+        while distance > np.linalg.norm(np.array([self.x, self.y]) - original_position) + 0.06:
             self.correct_position(x, y)
             if not self.path_clear(x, y):
                 raise PathBlockedException()
@@ -193,7 +254,7 @@ class Planner:
             p2 = data.points[2 * i + 1]
             lines.append((p1.x, p1.y, p2.x, p2.y))
         self.grid = lines_to_grid(lines)
-        self.grid.expand_obstacles(0.19)
+        self.grid.expand_obstacles(0.21)
         self.graph = self.grid.to_graph()
         self.updated_obstacles = True
 

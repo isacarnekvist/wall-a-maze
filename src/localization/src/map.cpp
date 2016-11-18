@@ -61,7 +61,6 @@ bool Map::update_from_laser(const geometry_msgs::Polygon::ConstPtr &msg) {
         return false;
     }
     for (const geometry_msgs::Point32 &p : msg->points) {
-        cout << "point: " << p.x << ", " << p.y << endl;
         cartesian_scans.push_back(make_tuple(p.x, p.y));
     }
     // These last arguments does not make sence since cartesian_scans
