@@ -9,7 +9,7 @@ set (VTK_DIR "/usr/lib/vtk-5.8")
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
-  roscpp
+  roscpp REQUIRED
   rospy
   std_msgs
   message_generation
@@ -19,6 +19,7 @@ find_package(catkin REQUIRED COMPONENTS
   pcl_conversions
   pcl_ros
   VTK REQUIRED
+  perception_helper REQUIRED
 )
 
 include(${VTK_USE_FILE})
@@ -129,6 +130,8 @@ catkin_package(
 include_directories( 
   ${catkin_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
+  ${roscpp_INCLUDE_DIRS}
+  ${perception_helper_INCLUDE_DIRS}
   #${PCL_INCLUDE_DIRS}
 )
 
@@ -143,7 +146,7 @@ include_directories(
 # add_dependencies(perception ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
-add_executable(generate_views_real src/generate_views_real.cpp src/point_cloud_helper.cpp)
+add_executable(generate_views_real src/generate_views_real.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
@@ -154,6 +157,8 @@ target_link_libraries(generate_views_real
   ${catkin_LIBRARIES}
   ${OpenCV_LIBRARIES}
   ${PCL_LIBRARIES}
+  ${roscpp_LIBRARIES}
+  ${perception_helper_LIBRARIES}
 )
 
 #############

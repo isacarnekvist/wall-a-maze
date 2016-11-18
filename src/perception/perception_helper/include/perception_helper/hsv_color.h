@@ -10,8 +10,6 @@ struct hsvColor {
 
     double valueMin;
     double valueMax;
-
-
 };
 
 #endif // HSV_COLOR_H

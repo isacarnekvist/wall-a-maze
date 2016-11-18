@@ -4,6 +4,12 @@
 #include <pcl_ros/point_cloud.h>
 #include "std_msgs/String.h"
 #include <ros/package.h>
+#include "geometry_msgs/PointStamped.h"
+
+// Own
+#include <perception_helper/vfh_helper.h>
+#include <perception_helper/hsv_color.h>
+#include <perception_helper/point_cloud_helper.h>
 
 #include "classifier/Object.h"
 
@@ -22,22 +28,13 @@
 #include <pcl/PointIndices.h>
 
 // PCL Features
-#include <pcl/features/normal_3d.h>
-//#include <pcl/features/cvfh.h>
-//#include <pcl/features/our_cvfh.h>
-#include <pcl/features/vfh.h>
 
 // PCL Filters
 #include <pcl/filters/voxel_grid.h>
+#include <pcl/filters/passthrough.h>
 
 // PCL Common
 #include <pcl/common/transforms.h>
-
-// Own
-#include "point_cloud_helper.h"
-#include "hsv_color.h"
-
-#include "geometry_msgs/PointStamped.h"
 
 // FLANN
 #include <flann/flann.h>
@@ -58,6 +55,7 @@ std::string training_data_h5_file_name = "training_data.h5";
 std::string training_data_list_file_name = "training_data.list";
 
 std::vector<hsvColor> colors;
+std::map<std::string, std::vector<std::string> > objectTypes;
 std::vector<std::string> colorNames;
 
 ros::Publisher object_pub;
@@ -70,7 +68,30 @@ double transform_yaw;
 double transform_roll;
 double transform_pitch;
 
+double normalRadiusSearch;
+bool normalizeBins;
+double EPSAngle;
+double maxCurv;
+
+std::vector<double> pointSize;
+
+double outlierMaxNeighbours, outlierStddev, clusterTolerance, minClusterSize, maxClusterSize;
+
 void initParams(ros::NodeHandle n) {
+    n.getParam("/outlierMaxNeighbours", outlierMaxNeighbours);
+    n.getParam("/outlierStddev", outlierStddev);
+
+    n.getParam("/clusterTolerance", clusterTolerance);
+    n.getParam("/minClusterSize", minClusterSize);
+    n.getParam("/maxClusterSize", maxClusterSize);
+
+    n.getParam("/radiusSearch", normalRadiusSearch);
+    n.getParam("/normalizeBins", normalizeBins);
+    n.getParam("/EPSAngle", EPSAngle);
+    n.getParam("/maxCurv", maxCurv);
+
+    n.getParam("/pointSize", pointSize);
+
     n.getParam("/translation/x", transform_x);
     n.getParam("/translation/y", transform_y);
     n.getParam("/translation/z", transform_z);
@@ -88,6 +109,9 @@ void initParams(ros::NodeHandle n) {
         hsvColor color = { color_hsv["h_min"], color_hsv["h_max"], color_hsv["s_min"], color_hsv["s_max"], color_hsv["v_min"], color_hsv["v_max"] };
 
         colors.push_back(color);
+
+
+        n.getParam("/" + colorNames[i] + "_types", objectTypes[colorNames[i]]);
     }
 
     std::string whatTypeOfData;
@@ -120,63 +144,6 @@ bool loadFileList (std::vector<vfh_model> &models) {
   return (true);
 }
 
-void computeCloudNormals(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud, pcl::PointCloud<pcl::Normal>::Ptr & cloud_normals) {
-    // Create the normal estimation class, and pass the input dataset to it
-    pcl::NormalEstimation<pcl::PointXYZ, pcl::Normal> ne;
-    ne.setInputCloud (cloud);
-
-    // Create an empty kdtree representation, and pass it to the normal estimation object.
-    // Its content will be filled inside the object, based on the given input dataset (as no other search surface is given).
-    pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ> ());
-    ne.setSearchMethod (tree);
-
-
-    // Use all neighbors in a sphere of radius 3cm
-    ne.setRadiusSearch (0.03);
-
-    // Compute the features
-    ne.compute (*cloud_normals);
-
-    // cloud_normals->points.size () should have the same size as the input cloud->points.size ()*
-}
-
-void computeVFHSignature(pcl::PointCloud<pcl::VFHSignature308>::Ptr & vfhs, pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud) {
-    pcl::VFHEstimation<pcl::PointXYZ, pcl::Normal, pcl::VFHSignature308> cvfh;
-    cvfh.setInputCloud(cloud);
-
-    // Get normals for cloud
-    pcl::PointCloud<pcl::Normal>::Ptr cloud_normals (new pcl::PointCloud<pcl::Normal>);
-
-    computeCloudNormals(cloud, cloud_normals);
-    cvfh.setInputNormals(cloud_normals);
-
-    // Create an empty kdtree representation, and pass it to the FPFH estimation object.
-    // Its content will be filled inside the object, based on the given input dataset (as no other search surface is given).
-    pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ> ());
-
-    cvfh.setSearchMethod(tree);
-
-    //cvfh.setCurvatureThreshold(0.025f);
-    //cvfh.setClusterTolerance(0.015f);   // 1.5 cm, three times the leaf size
-    //cvfh.setEPSAngleThreshold(0.13f);
-
-    //cvfh.setKSearch(100);   // ???
-
-    //cvfh.setEPSAngleThreshold(angle);
-    //cvfh.setCurvatureThreshold(max_curv);
-    cvfh.setNormalizeBins(false);
-
-    cvfh.compute(*vfhs);
-
-    /*
-    std::cout << "output points.size (): " << vfhs->points.size () << std::endl; // This outputs 1 - should be 397!
-
-    // Display and retrieve the shape context descriptor vector for the 0th point.
-    pcl::VFHSignature308 descriptor = vfhs->points[0];
-    std::cout << descriptor << std::endl;
-    */
-}
-
 void nearestKSearch (flann::Index<flann::ChiSquareDistance<float> > &index, const vfh_model &model,
                 int k, flann::Matrix<int> &indices, flann::Matrix<float> &distances) {
   // Query point
@@ -207,7 +174,7 @@ void generateHistogram(vfh_model & vfh, pcl::PointCloud<pcl::VFHSignature308>::P
 void generateHistogram(vfh_model & vfh, pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud) {
     pcl::PointCloud<pcl::VFHSignature308>::Ptr vfhs (new pcl::PointCloud<pcl::VFHSignature308>);
 
-    computeVFHSignature(vfhs, cloud);
+    VFHHelper::computeVFHSignature(vfhs, cloud, normalRadiusSearch, normalizeBins, EPSAngle, maxCurv);
 
     //pcl::io::savePCDFileASCII(base_dir + "/Views/Real/1" + data_extension, *vfhs);
     //pcl::io::savePCDFileASCII(data_dir + "/" + "Test" + "/" + "Test" + data_extension, *vfhs);
@@ -233,7 +200,7 @@ void classify(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud, std::vector<std::pair
 
 
 
-    int k = 50;
+    int k = 83; // Todo: set to something good
 
     std::vector<vfh_model> models;
     flann::Matrix<int> k_indices;
@@ -252,6 +219,7 @@ void classify(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud, std::vector<std::pair
 
     flann::Index<flann::ChiSquareDistance<float> > index (data, flann::SavedIndexParams(training_dir + "/kdtree.idx"));
     index.buildIndex();
+    k = index.size(); // TODO: is this good?!
     nearestKSearch(index, histogram, k, k_indices, k_distances);
 
     for (int i = 0; i < k; i++) {
@@ -267,7 +235,8 @@ void classify(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud, std::vector<std::pair
 }
 
 std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
-    double certantiy = 150.0;
+    double lowerCertantiy = 150.0;
+    double higherCertantiy = 200.0;
 
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_xyz (new pcl::PointCloud<pcl::PointXYZ>);
 
@@ -282,124 +251,78 @@ std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
 
     classify(cloud_xyz, candidates);
 
-    if (color == "red") {
-        // Red Cube
-        // Red Hollow Cube
-        // Red Ball
+    std::string object = "nope";
+    size_t i = 0;
+    for (; i < candidates.size(); i++) {
+        if (candidates[i].second > higherCertantiy) {
+            return "nope"; // We are too unsure to even know if it is an object
+        }
 
-        for (size_t i = 0; i < candidates.size(); i++) {
-            if (candidates[i].second > certantiy) {
-                return "object"; // We are too unsure
-            }
-
-            if (candidates[i].first == "Cube") {
-                return "Cube";
-            } else if (candidates[i].first == "Sphere" || candidates[i].first == "Ball") {
-                return "Ball";
+        for (size_t j = 0; j < objectTypes[color].size(); j++) {
+            if (candidates[i].first == objectTypes[color][j]) {
+                object = objectTypes[color][j];
+                break;
             }
         }
 
-    } else if (color == "blue") {
-        // Blue Cube
-        // Blue Triangle
-        for (size_t i = 0; i < candidates.size(); i++) {
-            if (candidates[i].second > certantiy) {
-                return "object"; // We are too unsure
-            }
-
-            if (candidates[i].first == "Cube") {
-                std::cout << candidates[i].second << std::endl;
-                return "Cube";
-            } else if (candidates[i].first == "Triangle") {
-                return "Triangle";
-            }
+        if (object != "nope") {
+            break;
         }
-
-    } else if (color == "purple") {
-        // Purple Cross
-        // Purple Star
-
-        for (size_t i = 0; i < candidates.size(); i++) {
-            if (candidates[i].second > certantiy) {
-                return "object"; // We are too unsure
-            }
-
-            if (candidates[i].first == "Cross") {
-                return "Cross";
-            } else if (candidates[i].first == "Star") {
-                return "Star";
-            }
-        }
-
-    } else if (color == "yellow") {
-        // Yellow Cube
-        // Yellow Ball
-
-        for (size_t i = 0; i < candidates.size(); i++) {
-            if (candidates[i].second > certantiy) {
-                return "object"; // We are too unsure
-            }
-
-            if (candidates[i].first == "Cube") {
-                return "Cube";
-            } else if (candidates[i].first == "Ball") {
-                return "Ball";
-            }
-        }
-
-    } else if (color == "green_D") {
-        // TODO: maybe check uncerntainty?!
-        return "Cube";
-    } else if (color == "green_L") {
-        // TODO: maybe check uncerntainty?!
-        return "Cylinder";
-    } else if (color == "green") {
-        // Green Cube
-        // Green Cylinder
-
-        for (size_t i = 0; i < candidates.size(); i++) {
-            if (candidates[i].second > certantiy) {
-                return "object"; // We are too unsure
-            }
-
-            if (candidates[i].first == "Cube") {
-                return "Cube";
-            } else if (candidates[i].first == "Cylinder") {
-                return "Cylinder";
-            }
-        }
-    } else if (color == "orange") {
-        // TODO: Still have to check?!
-        /*
-        for (size_t i = 0; i < candidates.size(); i++) {
-            if (candidates[i].second > 300) {
-                return "object"; // We are too unsure
-            }
-
-            if (candidates[i].first == "Star") {
-                return patric;
-            }
-        }
-        */
-
-        return "patric";
     }
 
-    return "object";
+    if (candidates[i].second > lowerCertantiy) {
+        return "object";    // To unsure
+    }
 
-    // TODO
-    //std::cout << classify(cloud_xyz) << std::endl;
-    //return classify(cloud_xyz);
+    return object;
+}
+
+classifier::Object getOptimalPickupPoint(pcl_rgb::Ptr & cloud_in) {
+    pcl::PointXYZRGB min_p, max_p;
+
+    pcl::getMinMax3D(*cloud_in, min_p, max_p);
+
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_final(new pcl::PointCloud<pcl::PointXYZRGB>);
+
+    pcl::PassThrough<pcl::PointXYZRGB> pass;
+    pass.setInputCloud (cloud_in);
+    pass.setFilterFieldName ("y");
+    pass.setFilterLimits (min_p.y - 0.015, min_p.y + 0.015);
+    pass.filter(*cloud_final);
+
+    // Calculate optimal pick up position
+    // PCL -> RIKTIG
+    // z = x
+    // x = y
+
+    double forward = 0.0;
+    double side = 0.0;
+    double height = 0.0;
+
+    double numPoints = 0.0;
+    for (pcl::PointCloud<pcl::PointXYZRGB>::iterator point = cloud_final->points.begin(); point < cloud_final->points.end(); point++) {
+        numPoints++;
+
+        forward += point->z;
+        side += point->x;
+        height -= point->y; // Inverted
+    }
+
+    // std::cout << "Forward: " << forward / numPoints << "\tSide: " << side / numPoints << "\tHeight: " << height / numPoints << std::endl;
+
+    classifier::Object point;
+    point.x = forward / numPoints;
+    point.y = side / numPoints;
+    point.z = height / numPoints;
+
+    return point;
 }
 
 void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input_cloud) {
     // Filtering input scan to increase speed of registration.
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr filtered_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
 
-    pcl::VoxelGrid<pcl::PointXYZRGB> approximate_voxel_filter;
-    approximate_voxel_filter.setLeafSize (0.005, 0.005, 0.005);
-    approximate_voxel_filter.setInputCloud (input_cloud);
-    approximate_voxel_filter.filter (*filtered_cloud);
+    PointCloudHelper::resizePoints(input_cloud, filtered_cloud, pointSize[0], pointSize[1], pointSize[2]);
 
     // Transform
     const Eigen::Vector3f translation(transform_y, -transform_z, transform_x);
@@ -428,63 +351,37 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
 
     //pcl::transformPointCloud(*filtered_cloud, *filtered_cloud, translation, rotation);
 
-
-    // Remove NaNs
-    std::vector<int> indices;
-    pcl::removeNaNFromPointCloud(*filtered_cloud, *filtered_cloud, indices);
-
     // Find the color objects
     for (int i = 0; i < colors.size(); i++) {
         pcl::PointCloud<pcl::PointXYZRGB>::Ptr color_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
 
         *color_cloud = *filtered_cloud;
 
-        //std::cout << color_cloud->points.size() << ", " << filtered_cloud->points.size() << std::endl;
+        pcl::PointIndices::Ptr indices (new pcl::PointIndices());
+        std::vector<pcl_rgb::Ptr> objects = PointCloudHelper::getObjects(color_cloud, colors[i], indices, outlierMaxNeighbours, outlierStddev, clusterTolerance, minClusterSize, maxClusterSize);
 
-        // Filter on color
-        PointCloudHelper::HSVFilter(color_cloud, color_cloud, colors[i]);
-
-        // Check if cloud is empty
-        if (color_cloud->points.size() == 0) {
-            continue;
-        }
-
-        // Remove outliers
-        PointCloudHelper::removeOutliers(color_cloud, color_cloud);
-
-        // Check if cloud is empty
-        if (color_cloud->points.size() == 0) {
-            continue;
-        }
-
-        // Seperate (Segmatation)
-        std::vector<pcl::PointIndices> cluster_indices = PointCloudHelper::segmentation(color_cloud);
-        //std::cout << cluster_indices.size() << std::endl;
-
-        for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin(); it != cluster_indices.end(); it++) {
-            pcl::PointCloud<pcl::PointXYZRGB>::Ptr cluster_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
-            for (std::vector<int>::const_iterator pit = it->indices.begin(); pit != it->indices.end(); pit++) {
-                cluster_cloud->points.push_back(color_cloud->points[*pit]);
-            }
-            cluster_cloud->width = cluster_cloud->points.size();
-            cluster_cloud->height = 1;
-            cluster_cloud->is_dense = true;
-            cluster_cloud->header = color_cloud->header; // Will fuck up RVIZ if not here!
-
-
-            //std::cout << color_cloud->points.size() << ", " << cluster_cloud->points.size() << std::endl;
-
+        for (size_t i = 0; i < objects.size(); i++) {
             // Classify
-            std::string objectType = classify(cluster_cloud, colorNames[i]);
+            std::string objectType = classify(objects[i], colorNames[i]);
+            if (objectType == "nope") {
+                continue;
+            }
+            if (objectType == "star" && colorNames[i].substr(0, colorNames[i].find("_")) == "orange") {
+                objectType = "patric";
+            }
             //std::cout << objectType << std::endl;
 
             // Filter so only top remains
             // TODO: Do this before classify?!
-            pcl::transformPointCloud(*cluster_cloud, *cluster_cloud, translation, rotation);
-            classifier::Object object = PointCloudHelper::getOptimalPickupPoint(cluster_cloud);
+            pcl::transformPointCloud(*objects[i], *objects[i], translation, rotation);
+            classifier::Object object = getOptimalPickupPoint(objects[i]);
 
             object.y = -object.y;
-            std::cout << colorNames[i].substr(0, colorNames[i].find("_")) << " " << objectType << " at: " << "X: " << object.x << ", Y: " << object.y << ", Z: " << object.z << std::endl;
+            if (objectType != "patric") {
+                std::cout << colorNames[i].substr(0, colorNames[i].find("_")) << " ";
+            }
+            std::cout << objectType << " at: " << "X: " << object.x << ", Y: " << object.y << ", Z: " << object.z << std::endl;
+
 
             object.color = colorNames[i].substr(0, colorNames[i].find("_"));
             object.type = objectType;
@@ -509,7 +406,7 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
 
 
 int main(int argc, char **argv) {
-    ros::init(argc, argv, "image_listener");
+    ros::init(argc, argv, "classifier");
     ros::NodeHandle nh;
 
     initParams(nh);

@@ -1,6 +1,5 @@
 #include "generate_views_real.h"
 
-
 // ROS
 #include <ros/ros.h>
 #include <ros/package.h>
@@ -26,8 +25,8 @@
 #include <pcl/filters/voxel_grid.h>
 
 // Own
-#include "point_cloud_helper.h"
-#include "hsv_color.h"  // Fix so this does not have to be in every package?!
+#include <perception_helper/point_cloud_helper.h>
+#include <perception_helper/hsv_color.h>
 
 #include "geometry_msgs/PointStamped.h"
 
@@ -41,20 +40,27 @@ std::string object;
 std::string save_dir = ros::package::getPath("train_classifier") + "/Data/Views";
 std::string data_extension = ".pcd";
 
-bool rgb_cloud;
+double outlierMaxNeighbours, outlierStddev, clusterTolerance, minClusterSize, maxClusterSize;
 
 void initParams(ros::NodeHandle n) {
-    n.getParam("/training_color", colorName);
-    n.getParam("/training_object", object);
-    n.getParam("/rgb_cloud", rgb_cloud);
+    n.getParam("/outlierMaxNeighbours", outlierMaxNeighbours);
+    n.getParam("/outlierStddev", outlierStddev);
+
+    n.getParam("/clusterTolerance", clusterTolerance);
+    n.getParam("/minClusterSize", minClusterSize);
+    n.getParam("/maxClusterSize", maxClusterSize);
 
     std::map<std::string, double> color_hsv;
 
     n.getParam("/" + colorName + "_hsv", color_hsv);
 
+    if (color_hsv.size() == 0) {
+        std::cout << "Color " << colorName << " does not exist!" << std::endl;
+        throw(0);
+    }
+
     color = { color_hsv["h_min"], color_hsv["h_max"], color_hsv["s_min"], color_hsv["s_max"], color_hsv["v_min"], color_hsv["v_max"] };
 }
-
 
 std::string getFileName() {
     int currentMax = 0;
@@ -79,100 +85,51 @@ std::string getFileName() {
     return boost::lexical_cast<std::string>(currentMax);
 }
 
-void pointCloudRGBCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input_cloud) {
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr filtered_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+void pointCloudCallback(sensor_msgs::PointCloud2ConstPtr & input_cloud) {
+    pcl::PCLPointCloud2 pcl_pc2;
+    pcl_conversions::toPCL(*input_cloud, pcl_pc2);
+    pcl_rgb::Ptr cloud(new pcl_rgb);
+    pcl::fromPCLPointCloud2(pcl_pc2, *cloud);
 
-    // Remove NaNs
-    std::vector<int> indices;
-    pcl::removeNaNFromPointCloud(*input_cloud, *filtered_cloud, indices);
+    std::vector<pcl_rgb::Ptr> objects = PointCloudHelper::getObjects(cloud, color, outlierMaxNeighbours, outlierStddev, clusterTolerance, minClusterSize, maxClusterSize);
 
-    // Filter on color
-    PointCloudHelper::HSVFilter(filtered_cloud, filtered_cloud, color);
-
-    // Remove outliers
-    PointCloudHelper::removeOutliers(filtered_cloud, filtered_cloud);
-
-    // Check if cloud is empty
-    if (filtered_cloud->points.size() == 0) {
-        return;
-    }
-
-    // Seperate (Segmatation)
-    std::vector<pcl::PointIndices> cluster_indices = PointCloudHelper::segmentation(filtered_cloud);
-
-    for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin(); it != cluster_indices.end(); it++) {
-        pcl::PointCloud<pcl::PointXYZRGB>::Ptr cluster_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
-        for (std::vector<int>::const_iterator pit = it->indices.begin(); pit != it->indices.end(); pit++) {
-            cluster_cloud->points.push_back(filtered_cloud->points[*pit]);
-        }
-        cluster_cloud->width = cluster_cloud->points.size();
-        cluster_cloud->height = 1;
-        cluster_cloud->is_dense = true;
-        cluster_cloud->header = filtered_cloud->header; // Will fuck up RVIZ if not here!
-
+    for (size_t i = 0; i < objects.size(); i++) {
         // Make dir for this object
+        std::cout << "Make dir for object" << std::endl;
         boost::filesystem::path dir(save_dir + "/Real/" + object);
         boost::filesystem::create_directories(dir);
 
         // Save the object Point Cloud to file
-        pcl::io::savePCDFileASCII(save_dir + "/Real/" + object + "/" + getFileName() + data_extension, *cluster_cloud);
-   	std::cout << "Save a new Point Cloud" << std::endl;
-   }
-}
-
-void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& input_cloud) {
-    pcl::PointCloud<pcl::PointXYZ>::Ptr filtered_cloud (new pcl::PointCloud<pcl::PointXYZ>);
-
-    // Remove NaNs
-    std::vector<int> indices;
-    pcl::removeNaNFromPointCloud(*input_cloud, *filtered_cloud, indices);
-
-    // TODO
-    // REMOVE GROUND AND EVERYTHING
-
-    // Remove outliers
-    PointCloudHelper::removeOutliers(filtered_cloud, filtered_cloud);
-
-    // Check if cloud is empty
-    if (filtered_cloud->points.size() == 0) {
-        return;
+        pcl::io::savePCDFileASCII(save_dir + "/Real/" + object + "/" + getFileName() + data_extension, *objects[i]);
+        std::cout << "Saved a new Point Cloud of a " << colorName << " " << object << " at:" << std::endl;
+        std::cout << save_dir << "/Real/" << object << "/" << getFileName() << data_extension << std::endl;
     }
-
-    // Seperate (Segmatation)
-    std::vector<pcl::PointIndices> cluster_indices = PointCloudHelper::segmentation(filtered_cloud);
-
-    for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin(); it != cluster_indices.end(); it++) {
-        pcl::PointCloud<pcl::PointXYZ>::Ptr cluster_cloud (new pcl::PointCloud<pcl::PointXYZ>);
-        for (std::vector<int>::const_iterator pit = it->indices.begin(); pit != it->indices.end(); pit++) {
-            cluster_cloud->points.push_back(filtered_cloud->points[*pit]);
-        }
-        cluster_cloud->width = cluster_cloud->points.size();
-        cluster_cloud->height = 1;
-        cluster_cloud->is_dense = true;
-        cluster_cloud->header = filtered_cloud->header; // Will fuck up RVIZ if not here!
-
-        // Make dir for this object
-        boost::filesystem::path dir(save_dir + "/Real/" + object);
-        boost::filesystem::create_directories(dir);
-
-        // Save the object Point Cloud to file
-        pcl::io::savePCDFileASCII(save_dir + "/Real/" + object + "/" + getFileName() + data_extension, *cluster_cloud);
-    std::cout << "Save a new Point Cloud" << std::endl;
-   }
 }
-
 
 int main(int argc, char **argv) {
     ros::init(argc, argv, "generate_views_real");
     ros::NodeHandle nh;
 
+    std::cout << "Color name: ";
+    std::getline(std::cin, colorName);
+
     initParams(nh);
 
-    if (rgb_cloud) {
-        ros::Subscriber point_sub = nh.subscribe("camera/depth_registered/points", 1, pointCloudRGBCallback);
-    } else {
-        ros::Subscriber point_sub = nh.subscribe("camera/depth/points", 1, pointCloudCallback);
+    std::cout << "Object type: ";
+    std::getline(std::cin, object);
+
+    std::string status;
+    while (ros::ok()) {
+        sensor_msgs::PointCloud2ConstPtr cloud = ros::topic::waitForMessage<sensor_msgs::PointCloud2>("camera/depth_registered/points");
+
+        pointCloudCallback(cloud);
+
+        std::cout << "Press [ENTER] to save a new point cloud, write 'n' to stop: ";
+        std::getline(std::cin, status);
+
+        if (status == "n") {
+            break;
+        }
     }
-    ros::spin();    // Spin once?!
 }
 

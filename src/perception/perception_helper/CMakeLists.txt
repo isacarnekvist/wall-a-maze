@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 2.8.3)
 # we need FindFLANN.cmake
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR})
 
-project(train_classifier)
+project(perception_helper)
 set (VTK_DIR "/usr/lib/vtk-5.8")
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -19,7 +19,6 @@ find_package(catkin REQUIRED COMPONENTS
   pcl_conversions
   pcl_ros
   VTK REQUIRED
-  perception_helper
 )
 
 include(${VTK_USE_FILE})
@@ -77,10 +76,10 @@ include(${VTK_USE_FILE})
 # )
 
 ## Generate added messages and services with any dependencies listed here
-generate_messages(
-  DEPENDENCIES
-  std_msgs
-)
+##generate_messages(
+##  DEPENDENCIES
+##  std_msgs
+##)
 
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
@@ -113,9 +112,9 @@ generate_messages(
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   DEPENDS opencv
-#  INCLUDE_DIRS include
-#  LIBRARIES perception
-#  CATKIN_DEPENDS roscpp rospy std_msgs
+  INCLUDE_DIRS include
+  LIBRARIES perception_helper
+  CATKIN_DEPENDS roscpp rospy std_msgs
   CATKIN_DEPENDS message_runtime
 #  DEPENDS system_lib
 )
@@ -128,17 +127,17 @@ catkin_package(
 ## Your package locations should be listed before other locations
 # include_directories(include)
 include_directories( 
+  include ${roscpp_INCLUDE_DIRS}
   ${catkin_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
   #${PCL_INCLUDE_DIRS}
-  ${roscpp_INCLUDE_DIRS}
-  ${modular_lib_pkg_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
-# add_library(perception
-#   src/${PROJECT_NAME}/perception.cpp
-# )
+add_library(perception_helper
+  src/${PROJECT_NAME}/point_cloud_helper.cpp
+  src/${PROJECT_NAME}/vfh_helper.cpp
+)
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
@@ -146,19 +145,18 @@ include_directories(
 # add_dependencies(perception ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
-add_executable(train_classifier src/train_classifier.cpp)
+##add_executable(perception_helper src/point_cloud_helper.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
-add_dependencies(train_classifier ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(perception_helper ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(train_classifier
+target_link_libraries(perception_helper
   ${catkin_LIBRARIES}
   ${OpenCV_LIBRARIES}
   ${PCL_LIBRARIES}
   ${roscpp_LIBRARIES}
-  ${perception_helper_LIBRARIES}
 )
 
 #############
@@ -183,11 +181,11 @@ target_link_libraries(train_classifier
 # )
 
 ## Mark cpp header files for installation
-# install(DIRECTORY include/${PROJECT_NAME}/
-#   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
-#   FILES_MATCHING PATTERN "*.h"
-#   PATTERN ".svn" EXCLUDE
-# )
+install(DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+  FILES_MATCHING PATTERN "*.h"
+  PATTERN ".svn" EXCLUDE
+)
 
 ## Mark other files for installation (e.g. launch and bag files, etc.)
 # install(FILES
@@ -216,7 +214,7 @@ if(HDF5_FOUND)
 
   include_directories(${HDF5_INCLUDE_DIR})
 
-  target_link_libraries(train_classifier ${PCL_LIBRARIES} ${Boost_LIBRARIES}
+  target_link_libraries(perception_helper ${PCL_LIBRARIES} ${Boost_LIBRARIES}
                                  ${FLANN_LIBRARIES} ${HDF5_hdf5_LIBRARY})
 
 

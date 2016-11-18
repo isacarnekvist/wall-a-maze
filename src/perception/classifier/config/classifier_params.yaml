@@ -13,6 +13,25 @@ purple_hsv: { h_min: 250.0, h_max: 360.0, s_min: 0.10, s_max: 1.0, v_min: 0.3, v
 yellow_hsv: { h_min: 25.0, h_max: 50.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
 orange_hsv: { h_min: 15.0, h_max: 25.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 } 
 
+red_types: [ 'cube', 'ball' ]
+blue_types: [ 'cube', 'triangle' ]
+green_L_types: [ 'cylinder', 'cube' ]
+green_D_types: [ 'cube' ]
+purple_types: [ 'cross', 'star' ]
+yellow_types: [ 'cube', 'ball' ]
+orange_types: [ 'star' ]
+
+# Remove Outliers
+outlierMaxNeighbours: 20
+outlierStddev: 1.0
+
+# Cluster Segmentation
+clusterTolerance: 0.02
+minClusterSize: 100
+maxClusterSize: 25000
+
+# Points Size [ X, Y, Z ]
+pointSize: [ 0.005, 0.005, 0.005 ]
 
 # 'CAD' or 'Real'
 whatTypeOfData: 'Real'
