@@ -362,9 +362,9 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
         pcl::PointIndices::Ptr indices (new pcl::PointIndices());
         std::vector<pcl_rgb::Ptr> objects = PointCloudHelper::getObjects(color_cloud, colors[i], indices, outlierMaxNeighbours, outlierStddev, clusterTolerance, minClusterSize, maxClusterSize);
 
-        for (size_t i = 0; i < objects.size(); i++) {
+        for (size_t j = 0; j < objects.size(); j++) {
             // Classify
-            std::string objectType = classify(objects[i], colorNames[i]);
+            std::string objectType = classify(objects[j], colorNames[i]);
             if (objectType == "nope") {
                 continue;
             }
@@ -375,8 +375,8 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
 
             // Filter so only top remains
             // TODO: Do this before classify?!
-            pcl::transformPointCloud(*objects[i], *objects[i], translation, rotation);
-            classifier::Object object = getOptimalPickupPoint(objects[i]);
+            pcl::transformPointCloud(*objects[j], *objects[j], translation, rotation);
+            classifier::Object object = getOptimalPickupPoint(objects[j]);
 
             object.y = -object.y;
             if (objectType != "patric") {

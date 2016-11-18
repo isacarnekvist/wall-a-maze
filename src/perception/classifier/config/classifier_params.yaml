@@ -2,21 +2,25 @@
 translation: { x: 0.105, y: 0.0, z: 0.145 }
 rotation: { yaw: 0.0, roll: 35.0, pitch: 3.0 }
 
-color_names: [ 'red', 'blue', 'green_D', 'orange', 'purple' ]
-# , , 'green_L', 'green_D', 'yellow',  ]
-red_hsv: { h_min: 1.0, h_max: 15.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
-red_2_hsv: { h_min: 355.0, h_max: 360.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
-blue_hsv: { h_min: 180.0, h_max: 215.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
-green_L_hsv: { h_min: 60.0, h_max: 95.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
-green_D_hsv: { h_min: 100.0, h_max: 140.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
-purple_hsv: { h_min: 250.0, h_max: 360.0, s_min: 0.10, s_max: 1.0, v_min: 0.3, v_max: 1.0 }
-yellow_hsv: { h_min: 25.0, h_max: 50.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
+color_names: [ 'red', 'blue', 'green', 'orange', 'purple' ]
+# , 'yellow',  ]
+red_hsv: { h_min: 0.0, h_max: 15.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
+
 orange_hsv: { h_min: 15.0, h_max: 25.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 } 
+
+yellow_hsv: { h_min: 25.0, h_max: 50.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
+
+green_hsv: { h_min: 60.0, h_max: 140.0, s_min: 0.2, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
+
+blue_hsv: { h_min: 140.0, h_max: 215.0, s_min: 0.2, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
+
+purple_hsv: { h_min: 250.0, h_max: 360.0, s_min: 0.10, s_max: 1.0, v_min: 0.3, v_max: 1.0 }
+
+red_2_hsv: { h_min: 355.0, h_max: 360.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
 
 red_types: [ 'cube', 'ball' ]
 blue_types: [ 'cube', 'triangle' ]
-green_L_types: [ 'cylinder', 'cube' ]
-green_D_types: [ 'cube' ]
+green_types: [ 'cylinder', 'cube' ]
 purple_types: [ 'cross', 'star' ]
 yellow_types: [ 'cube', 'ball' ]
 orange_types: [ 'star' ]
@@ -31,11 +35,11 @@ minClusterSize: 100
 maxClusterSize: 25000
 
 # Points Size [ X, Y, Z ]
-pointSize: [ 0.005, 0.005, 0.005 ]
+pointSize: [ 0.003, 0.003, 0.003 ]
 
 # Classifier limits
-lowCertaintyLimit: 150.0 
-highCertaintyLimit: 200.0
+lowCertaintyLimit: 400.0 
+highCertaintyLimit: 600.0
 
 # 'CAD' or 'Real'
 whatTypeOfData: 'Real'

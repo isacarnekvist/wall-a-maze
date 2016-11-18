@@ -65,7 +65,7 @@ void initParams(ros::NodeHandle n) {
 std::string getFileName() {
     int currentMax = 0;
 
-    boost::filesystem::path p(save_dir + "/Real/" + object);
+    boost::filesystem::path p(save_dir + "/Raw/" + colorName + "/" + object);
 
     for (boost::filesystem::directory_iterator i = boost::filesystem::directory_iterator(p); i != boost::filesystem::directory_iterator(); i++) {
         if (!boost::filesystem::is_directory(i->path())) {
@@ -86,24 +86,40 @@ std::string getFileName() {
 }
 
 void pointCloudCallback(sensor_msgs::PointCloud2ConstPtr & input_cloud) {
+    std::cout << "Got cloud" << std::endl;
     pcl::PCLPointCloud2 pcl_pc2;
     pcl_conversions::toPCL(*input_cloud, pcl_pc2);
     pcl_rgb::Ptr cloud(new pcl_rgb);
     pcl::fromPCLPointCloud2(pcl_pc2, *cloud);
 
-    std::vector<pcl_rgb::Ptr> objects = PointCloudHelper::getObjects(cloud, color, outlierMaxNeighbours, outlierStddev, clusterTolerance, minClusterSize, maxClusterSize);
+    // Make dir for this object
+    //std::cout << "Make dir for object" << std::endl;
+    boost::filesystem::path dir(save_dir + "/Real/" + object);
+    boost::filesystem::path dir2(save_dir + "/Raw/" + colorName + "/" + object);
+    boost::filesystem::create_directories(dir);
+    boost::filesystem::create_directories(dir2);
 
-    for (size_t i = 0; i < objects.size(); i++) {
-        // Make dir for this object
-        std::cout << "Make dir for object" << std::endl;
-        boost::filesystem::path dir(save_dir + "/Real/" + object);
-        boost::filesystem::create_directories(dir);
+    pcl_rgb::Ptr cloud_raw (new pcl_rgb);
+    *cloud_raw = *cloud;
+    /*
+    cloud_raw->width = cloud_raw->points.size();
+    cloud_raw->height = 1;
+    cloud_raw->is_dense = true;
+    cloud_raw->header = cloud->header;
+*/
+    // Save the object Point Cloud to file
+    pcl::io::savePCDFileASCII(save_dir + "/Raw/" + colorName + "/" + object + "/" + getFileName() + data_extension, *cloud_raw);
+    std::cout << "Saved a new raw Point Cloud of a " << colorName << " " << object << " at:" << std::endl;
+    std::cout << save_dir << "/Raw/" << colorName << "/" << object << "/" << getFileName() << data_extension << std::endl;
 
+    //std::vector<pcl_rgb::Ptr> objects = PointCloudHelper::getObjects(cloud, color, outlierMaxNeighbours, outlierStddev, clusterTolerance, minClusterSize, maxClusterSize);
+
+    //for (size_t i = 0; i < objects.size(); i++) {
         // Save the object Point Cloud to file
-        pcl::io::savePCDFileASCII(save_dir + "/Real/" + object + "/" + getFileName() + data_extension, *objects[i]);
-        std::cout << "Saved a new Point Cloud of a " << colorName << " " << object << " at:" << std::endl;
-        std::cout << save_dir << "/Real/" << object << "/" << getFileName() << data_extension << std::endl;
-    }
+        //pcl::io::savePCDFileASCII(save_dir + "/Real/" + object + "/" + getFileName() + data_extension, *objects[i]);
+        //std::cout << "Saved a new Point Cloud of a " << colorName << " " << object << " at:" << std::endl;
+        //std::cout << save_dir << "/Real/" << object << "/" << getFileName() << data_extension << std::endl;
+    //}
 }
 
 int main(int argc, char **argv) {
@@ -120,16 +136,16 @@ int main(int argc, char **argv) {
 
     std::string status;
     while (ros::ok()) {
-        sensor_msgs::PointCloud2ConstPtr cloud = ros::topic::waitForMessage<sensor_msgs::PointCloud2>("camera/depth_registered/points");
-
-        pointCloudCallback(cloud);
-
         std::cout << "Press [ENTER] to save a new point cloud, write 'n' to stop: ";
         std::getline(std::cin, status);
 
         if (status == "n") {
             break;
         }
+
+        sensor_msgs::PointCloud2ConstPtr cloud = ros::topic::waitForMessage<sensor_msgs::PointCloud2>("camera/depth_registered/points");
+
+        pointCloudCallback(cloud);
     }
 }
 

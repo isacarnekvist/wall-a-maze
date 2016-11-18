@@ -89,8 +89,9 @@ class Mother:
         manipObject.pickupPos.point.z = data.z
         manipObject.pickupPos.header.frame_id = 'wheel_center'
         
-        manipObject.job = 'reposition'
-        #self.arm.publish(pickup)
+        manipObject.job = 'carryout'
+
+        self.arm.publish(pickup)
         self.possible_objects.append(do)
         print('length of po:', len(self.possible_objects))
 

@@ -6,7 +6,7 @@
 
 // PCL Features
 #include <pcl/features/normal_3d.h>
-#include <pcl/features/cvfh.h>
+#include <pcl/features/vfh.h>
 
 
 
@@ -32,7 +32,7 @@ namespace VFHHelper {
     }
 
     void computeVFHSignature(pcl::PointCloud<pcl::VFHSignature308>::Ptr & vfhs, pcl_rgb::Ptr & cloud, double radiusSearch, bool normalizeBins, double EPSAngle, double maxCurv) {
-        pcl::CVFHEstimation<pcl::PointXYZ, pcl::Normal, pcl::VFHSignature308> cvfh;
+        pcl::VFHEstimation<pcl::PointXYZ, pcl::Normal, pcl::VFHSignature308> cvfh;
         cvfh.setInputCloud(cloud);
 
         // Get normals for cloud
@@ -53,8 +53,8 @@ namespace VFHHelper {
 
         //cvfh.setKSearch(100);   // ???
 
-        cvfh.setEPSAngleThreshold(EPSAngle);
-        cvfh.setCurvatureThreshold(maxCurv);
+        //cvfh.setEPSAngleThreshold(EPSAngle);
+        //cvfh.setCurvatureThreshold(maxCurv);
         cvfh.setNormalizeBins(normalizeBins);
 
         cvfh.compute(*vfhs);
