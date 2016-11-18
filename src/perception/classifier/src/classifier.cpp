@@ -77,6 +77,8 @@ std::vector<double> pointSize;
 
 double outlierMaxNeighbours, outlierStddev, clusterTolerance, minClusterSize, maxClusterSize;
 
+double lowCertaintyLimit, highCertaintyLimit;
+
 void initParams(ros::NodeHandle n) {
     n.getParam("/outlierMaxNeighbours", outlierMaxNeighbours);
     n.getParam("/outlierStddev", outlierStddev);
@@ -91,6 +93,9 @@ void initParams(ros::NodeHandle n) {
     n.getParam("/maxCurv", maxCurv);
 
     n.getParam("/pointSize", pointSize);
+
+    n.getParam("/lowCertaintyLimit", lowCertaintyLimit);
+    n.getParam("/highCertaintyLimit", highCertaintyLimit);
 
     n.getParam("/translation/x", transform_x);
     n.getParam("/translation/y", transform_y);
@@ -235,9 +240,6 @@ void classify(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud, std::vector<std::pair
 }
 
 std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
-    double lowerCertantiy = 150.0;
-    double higherCertantiy = 200.0;
-
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_xyz (new pcl::PointCloud<pcl::PointXYZ>);
 
     cloud_xyz->points.resize(cloud_in->points.size());
@@ -254,7 +256,7 @@ std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
     std::string object = "nope";
     size_t i = 0;
     for (; i < candidates.size(); i++) {
-        if (candidates[i].second > higherCertantiy) {
+        if (candidates[i].second > highCertaintyLimit) {
             return "nope"; // We are too unsure to even know if it is an object
         }
 
@@ -270,7 +272,7 @@ std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
         }
     }
 
-    if (candidates[i].second > lowerCertantiy) {
+    if (candidates[i].second > lowCertaintyLimit) {
         return "object";    // To unsure
     }
 

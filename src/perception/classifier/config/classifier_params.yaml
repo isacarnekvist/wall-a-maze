@@ -33,6 +33,10 @@ maxClusterSize: 25000
 # Points Size [ X, Y, Z ]
 pointSize: [ 0.005, 0.005, 0.005 ]
 
+# Classifier limits
+lowCertaintyLimit: 150.0 
+highCertaintyLimit: 200.0
+
 # 'CAD' or 'Real'
 whatTypeOfData: 'Real'
 
