@@ -239,7 +239,7 @@ void classify(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud, std::vector<std::pair
     //return candidates;
 }
 
-std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
+std::pair<std::string, float> classify(pcl_rgb::Ptr cloud_in, std::string color) {
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_xyz (new pcl::PointCloud<pcl::PointXYZ>);
 
     cloud_xyz->points.resize(cloud_in->points.size());
@@ -257,7 +257,7 @@ std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
     size_t i = 0;
     for (; i < candidates.size(); i++) {
         if (candidates[i].second > highCertaintyLimit) {
-            return "nope"; // We are too unsure to even know if it is an object
+            return std::make_pair<std::string, float>("nope", candidates[i].second); // We are too unsure to even know if it is an object
         }
 
         for (size_t j = 0; j < objectTypes[color].size(); j++) {
@@ -272,11 +272,15 @@ std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
         }
     }
 
-    if (candidates[i].second > lowCertaintyLimit) {
-        return "object";    // To unsure
+    if (object == "nope") {
+        return std::make_pair<std::string, float>("nope", candidates[i].second); // We are too unsure to even know if it is an object
     }
 
-    return object;
+    if (candidates[i].second > lowCertaintyLimit) {
+        object = "object";    // Too unsure
+    }
+
+    return std::make_pair<std::string, float>(object, candidates[i].second);
 }
 
 classifier::Object getOptimalPickupPoint(pcl_rgb::Ptr & cloud_in) {
@@ -364,12 +368,12 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
 
         for (size_t j = 0; j < objects.size(); j++) {
             // Classify
-            std::string objectType = classify(objects[j], colorNames[i]);
-            if (objectType == "nope") {
+            std::pair<std::string, float> objectType = classify(objects[j], colorNames[i]);
+            if (objectType.first == "nope") {
                 continue;
             }
-            if (objectType == "star" && colorNames[i].substr(0, colorNames[i].find("_")) == "orange") {
-                objectType = "patric";
+            if (objectType.first == "star" && colorNames[i].substr(0, colorNames[i].find("_")) == "orange") {
+                objectType.first = "patric";
             }
             //std::cout << objectType << std::endl;
 
@@ -379,14 +383,14 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
             classifier::Object object = getOptimalPickupPoint(objects[j]);
 
             object.y = -object.y;
-            if (objectType != "patric") {
+            if (objectType.first != "patric") {
                 std::cout << colorNames[i].substr(0, colorNames[i].find("_")) << " ";
             }
-            std::cout << objectType << " at: " << "X: " << object.x << ", Y: " << object.y << ", Z: " << object.z << std::endl;
+            std::cout << objectType.first << " (" << objectType.second << ") at: " << "X: " << object.x << ", Y: " << object.y << ", Z: " << object.z <<  std::endl;
 
 
             object.color = colorNames[i].substr(0, colorNames[i].find("_"));
-            object.type = objectType;
+            object.type = objectType.first;
 
             // Output
 

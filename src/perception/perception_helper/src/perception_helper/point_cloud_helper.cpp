@@ -132,7 +132,6 @@ namespace PointCloudHelper {
         //std::cout << "Segment cloud into clusters" << std::endl;
         std::vector<pcl::PointIndices> cluster_indices = PointCloudHelper::segmentation(filtered_cloud, clusterTolerance, minClusterSize, maxClusterSize);
 
-
         for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin(); it != cluster_indices.end(); it++) {
             pcl_rgb::Ptr cluster_cloud (new pcl_rgb);
             //std::cout << "Create a cluster object" << std::endl;

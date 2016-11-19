@@ -2,6 +2,6 @@
 radiusSearch: 0.03
 
 # Compute VFH Signature
-normalizeBins: false
+normalizeBins: true
 EPSAngle: 5.0 / 180.0 + pi
 maxCurv: 1.0

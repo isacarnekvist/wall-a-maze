@@ -2,6 +2,7 @@
 	<!-- <rosparam file="$(find general)/config/general_params.yaml" command="load" /> -->
 	<!-- <rosparam file="$(find train_classifier)/config/train_classifier_params.yaml" command="load" /> -->
 	<rosparam file="$(find classifier)/config/classifier_params.yaml" command="load" />
+	<rosparam file="$(find classifier)/config/vfh_params.yaml" command="load" />
 	<node pkg="train_classifier" type="train_classifier" name="train_classifier" output="screen" />
 		
 </launch>
