@@ -78,10 +78,10 @@ class Planner:
         self.scans = []
         self.x = 0.0
         self.y = 0.0
-        self.wheels = rospy.Publisher('motor_controller', Twist, queue_size=1)
-        self.grid_publisher = rospy.Publisher('occupancy_grid', OccupancyGrid, queue_size=1)
-        self.path_publisher = rospy.Publisher('path', Path, queue_size=1)
-        self.new_obstacle_publisher = rospy.Publisher('seen_obstacles', Polygon, queue_size=1)
+        self.wheels = rospy.Publisher('motor_controller', Twist, queue_size=10)
+        self.grid_publisher = rospy.Publisher('occupancy_grid', OccupancyGrid, queue_size=10)
+        self.path_publisher = rospy.Publisher('path', Path, queue_size=10)
+        self.new_obstacle_publisher = rospy.Publisher('seen_obstacles', Polygon, queue_size=10)
         print('Started planner server')
 
     def target_callback(self, goal):
@@ -97,6 +97,8 @@ class Planner:
             print('target was canceled')
             self.abort()
             return
+
+        print('self.goal: {}'.format(self.goal))
 
         self.state_machine.transition_to(EXECUTING)
 
@@ -132,6 +134,8 @@ class Planner:
                 final_rotation = None
             try:
                 for _ in self.line_iterator(x, y, final_rotation):
+                    if self.state_machine.state != EXECUTING:
+                        return
                     rate.sleep()
             except PathBlockedException as e:
                 if self.state_machine.state == EXECUTING:
@@ -148,6 +152,7 @@ class Planner:
                     sleep(0.1)
                 if self.state_machine.state == REPLANNING:
                     self.target_callback(aborted_goal)
+                    return
                 else:
                     return
             self.plan = self.plan[1:]
@@ -236,7 +241,8 @@ class Planner:
 
     """For just stopping the robot, not aborting a current goal"""
     def stop(self):
-        self.wheels.publish(Twist())
+	msg = Twist()
+        self.wheels.publish(msg)
 
     def correct_position(self, x, y):
         target_theta = atan2(y - self.y, x - self.x)
@@ -323,7 +329,7 @@ if __name__ == '__main__':
     rospy.Subscriber('planner', PlannerTarget, planner.target_callback)
     rospy.Subscriber('scan', LaserScan, planner.laser_callback)
     status_service = rospy.Service('planner_ready', PlannerStatus, planner.status_callback)
-    rate = rospy.Rate(2)
+    rate = rospy.Rate(10)
     while not rospy.is_shutdown():
         planner.publish_visuals()
         rate.sleep()
