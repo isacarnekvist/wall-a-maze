@@ -104,6 +104,11 @@ namespace PointCloudHelper {
         PointCloudHelper::HSVFilter(cloud_in, filtered_cloud, color, hsv_indices);
         indices->indices.insert(indices->indices.end(), hsv_indices->indices.begin(), hsv_indices->indices.end());
 
+        // Remove NaNs
+        //std::cout << "Remove NaNs from cloud" << std::endl;
+        std::vector<int> indicesTemp;
+        pcl::removeNaNFromPointCloud(*filtered_cloud, *filtered_cloud, indicesTemp);
+
         // Check if cloud is empty
         //std::cout << "Check if cloud is empty" << std::endl;
         if (filtered_cloud->points.size() == 0) {
@@ -122,11 +127,6 @@ namespace PointCloudHelper {
             //std::cout << "Cloud empty" << std::endl;
             return objects;
         }
-
-        // Remove NaNs
-        //std::cout << "Remove NaNs from cloud" << std::endl;
-        std::vector<int> indicesTemp;
-        pcl::removeNaNFromPointCloud(*filtered_cloud, *filtered_cloud, indicesTemp);
 
         // Seperate (Segmatation)
         //std::cout << "Segment cloud into clusters" << std::endl;

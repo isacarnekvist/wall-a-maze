@@ -3,16 +3,15 @@ cmake_minimum_required(VERSION 2.8.3)
 # we need FindFLANN.cmake
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR})
 
-project(classifier)
+project(test_classifier)
 set (VTK_DIR "/usr/lib/vtk-5.8")
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
-  roscpp
+  roscpp REQUIRED
   rospy
   std_msgs
-  sensor_msgs
   message_generation
   image_transport
   cv_bridge
@@ -20,7 +19,7 @@ find_package(catkin REQUIRED COMPONENTS
   pcl_conversions
   pcl_ros
   VTK REQUIRED
-  perception_helper
+  perception_helper REQUIRED
 )
 
 include(${VTK_USE_FILE})
@@ -59,16 +58,16 @@ include(${VTK_USE_FILE})
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 ## Generate messages in the 'msg' folder
-add_message_files(
-  FILES
-  Object.msg
-)
+##add_message_files(
+##  FILES
+##)
 
 ## Generate services in the 'srv' folder
-add_service_files(
-  FILES
-  Classify.srv
-)
+# add_service_files(
+#   FILES
+#   Service1.srv
+#   Service2.srv
+# )
 
 ## Generate actions in the 'action' folder
 # add_action_files(
@@ -81,7 +80,6 @@ add_service_files(
 generate_messages(
   DEPENDENCIES
   std_msgs
-  sensor_msgs
 )
 
 ################################################
@@ -148,14 +146,14 @@ include_directories(
 # add_dependencies(perception ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
-add_executable(classifier src/classifier.cpp)
+add_executable(test_classifier src/test_classifier.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
-add_dependencies(classifier ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(test_classifier ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(classifier
+target_link_libraries(test_classifier
   ${catkin_LIBRARIES}
   ${OpenCV_LIBRARIES}
   ${PCL_LIBRARIES}
@@ -218,7 +216,7 @@ if(HDF5_FOUND)
 
   include_directories(${HDF5_INCLUDE_DIR})
 
-  target_link_libraries(classifier ${PCL_LIBRARIES} ${Boost_LIBRARIES}
+  target_link_libraries(test_classifier ${PCL_LIBRARIES} ${Boost_LIBRARIES}
                                  ${FLANN_LIBRARIES} ${HDF5_hdf5_LIBRARY})
 
 

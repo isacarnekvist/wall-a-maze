@@ -1,0 +1,8 @@
+<launch>
+	<!-- <rosparam file="$(find general)/config/general_params.yaml" command="load" /> -->
+	<rosparam file="$(find classifier)/config/classifier_params.yaml" command="load" />
+	<rosparam file="$(find test_classifier)/config/test_classifier_params.yaml" command="load" />
+	<include file="$(find classifier)/launch/classifier.launch" />
+	<node pkg="test_classifier" type="test_classifier" name="test_classifier" output="screen" />
+		
+</launch>

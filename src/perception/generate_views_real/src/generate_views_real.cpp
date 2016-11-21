@@ -8,11 +8,20 @@
 // C++ General
 #include <stdlib.h>     /* atoi */
 
+// PCL
+#include <pcl/filters/extract_indices.h>
+
+// Own
+#include <perception_helper/text_color.h>
+
 std::string colorName;
 
 std::string object;
 
-std::string save_dir = ros::package::getPath("extract_object") + "/Data/Views";
+std::string dataset = "";
+
+std::string save_dir_training = ros::package::getPath("extract_object") + "/Data/Views";
+std::string save_dir_testing = ros::package::getPath("test_classifier") + "/Data/Views";
 std::string data_extension = ".pcd";
 
 void initParams(ros::NodeHandle n) {
@@ -20,6 +29,11 @@ void initParams(ros::NodeHandle n) {
 
 std::string getFileName() {
     int currentMax = 0;
+
+    std::string save_dir = save_dir_training;
+    if (dataset == "testing") {
+        save_dir = save_dir_testing;
+    }
 
     boost::filesystem::path p(save_dir + "/Raw/" + colorName + "/" + object);
 
@@ -42,11 +56,21 @@ std::string getFileName() {
 }
 
 void pointCloudCallback(sensor_msgs::PointCloud2ConstPtr & input_cloud) {
+    std::string save_dir = save_dir_training;
+    if (dataset == "testing") {
+        save_dir = save_dir_testing;
+    }
+
     std::cout << "Got cloud (can move now)" << std::endl;
     pcl::PCLPointCloud2 pcl_pc2;
     pcl_conversions::toPCL(*input_cloud, pcl_pc2);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::fromPCLPointCloud2(pcl_pc2, *cloud);
+
+    // Remove NaNs
+    //std::cout << "Remove NaNs from cloud" << std::endl;
+    std::vector<int> indicesTemp;
+    pcl::removeNaNFromPointCloud(*cloud, *cloud, indicesTemp);
 
     // Make dir for this object
     //std::cout << "Make dir for object" << std::endl;
@@ -68,6 +92,24 @@ int main(int argc, char **argv) {
 
     initParams(nh);
 
+    std::cout << textColor::white;
+
+    while (dataset == "") {
+        std::cout << "Type 'training' if the data is for " << textColor::green << "training" << textColor::white << std::endl;
+        std::cout << "Type 'testing' if the data is for " << textColor::red << "testing" << textColor::white << std::endl;
+        std::cout << "> ";
+        std::getline(std::cin, dataset);
+        if (dataset == "training") {
+            std::cout << textColor::green;
+        } else if (dataset == "testing") {
+            std::cout << textColor::red;
+        } else {
+            std::cout << textColor::white;
+            std::cout << "'" << dataset << "' is not a valid option!" << std::endl;
+            dataset = "";
+        }
+    }
+
     std::cout << "Color name: ";
     std::getline(std::cin, colorName);
 
@@ -76,8 +118,13 @@ int main(int argc, char **argv) {
 
     std::string status = "n";
     while (ros::ok()) {
-        std::cout << "\n\nLooking for " << colorName << " " << object << std::endl;
-        std::cout << "Press [ENTER] to save a new point cloud, write 'q' to stop and 'n' for new object: ";
+        std::cout << "\n\n" << dataset << ": Looking for " << colorName << " " << object << std::endl;
+        std::cout << "Press [ENTER] to save a new point cloud" << std::endl;
+        std::cout << "Type:" << std::endl;
+        std::cout << "\t'q' to stop" << std::endl;
+        std::cout << "\t'n' for new object" << std::endl;
+        std::cout << "\t't to change between training and testing" << std::endl;
+        std::cout << "> ";
         std::getline(std::cin, status);
 
         if (status == "q") {
@@ -88,13 +135,32 @@ int main(int argc, char **argv) {
 
             std::cout << "Object type: ";
             std::getline(std::cin, object);
+        } else if (status == "t") {
+            dataset = "";
+            while (dataset == "") {
+                std::cout << textColor::white;
+                std::cout << "Type 'training' if the data is for " << textColor::green << "training" << textColor::white << std::endl;
+                std::cout << "Type 'testing' if the data is for " << textColor::red << "testing" << textColor::white << std::endl;
+                std::cout << "> ";
+                std::getline(std::cin, dataset);
+                if (dataset == "training") {
+                    std::cout << textColor::green;
+                } else if (dataset == "testing") {
+                    std::cout << textColor::red;
+                } else {
+                    std::cout << textColor::white;
+                    std::cout << "'" << dataset << "' is not a valid option!" << std::endl;
+                    dataset = "";
+                }
+            }
+        } else if (status != "") {
+            std::cout << "Unknown input" << std::endl;
+        } else {
+            std::cout << "Waiting for Point Cloud..." << std::endl;
+            sensor_msgs::PointCloud2ConstPtr cloud = ros::topic::waitForMessage<sensor_msgs::PointCloud2>("camera/depth_registered/points");
 
-            continue;
+            pointCloudCallback(cloud);
         }
-
-        sensor_msgs::PointCloud2ConstPtr cloud = ros::topic::waitForMessage<sensor_msgs::PointCloud2>("camera/depth_registered/points");
-
-        pointCloudCallback(cloud);
     }
 }
 
