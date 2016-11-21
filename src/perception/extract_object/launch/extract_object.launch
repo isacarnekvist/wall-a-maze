@@ -1,0 +1,6 @@
+<launch>
+	<!-- <rosparam file="$(find general)/config/general_params.yaml" command="load" /> -->
+	<rosparam file="$(find classifier)/config/classifier_params.yaml" command="load" />
+	<node pkg="extract_object" type="extract_object" name="extract_object" output="screen" />
+		
+</launch>

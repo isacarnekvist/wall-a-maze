@@ -12,6 +12,7 @@
 #include <perception_helper/point_cloud_helper.h>
 
 #include "classifier/Object.h"
+#include "classifier/Classify.h"
 
 // C++ General
 #include <iostream>
@@ -60,6 +61,7 @@ std::vector<std::string> colorNames;
 
 ros::Publisher object_pub;
 ros::Publisher point_pub;
+ros::Publisher test_pub;
 
 double transform_x;
 double transform_y;
@@ -78,6 +80,8 @@ std::vector<double> pointSize;
 double outlierMaxNeighbours, outlierStddev, clusterTolerance, minClusterSize, maxClusterSize;
 
 double lowCertaintyLimit, highCertaintyLimit;
+
+int cloudNum = 0;  // Number of clouds
 
 void initParams(ros::NodeHandle n) {
     n.getParam("/outlierMaxNeighbours", outlierMaxNeighbours);
@@ -239,7 +243,7 @@ void classify(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud, std::vector<std::pair
     //return candidates;
 }
 
-std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
+std::pair<std::string, float> classify(pcl_rgb::Ptr cloud_in, std::string color) {
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_xyz (new pcl::PointCloud<pcl::PointXYZ>);
 
     cloud_xyz->points.resize(cloud_in->points.size());
@@ -257,7 +261,7 @@ std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
     size_t i = 0;
     for (; i < candidates.size(); i++) {
         if (candidates[i].second > highCertaintyLimit) {
-            return "nope"; // We are too unsure to even know if it is an object
+            return std::make_pair<std::string, float>("nope", candidates[i].second); // We are too unsure to even know if it is an object
         }
 
         for (size_t j = 0; j < objectTypes[color].size(); j++) {
@@ -272,11 +276,15 @@ std::string classify(pcl_rgb::Ptr cloud_in, std::string color) {
         }
     }
 
-    if (candidates[i].second > lowCertaintyLimit) {
-        return "object";    // To unsure
+    if (object == "nope") {
+        return std::make_pair<std::string, float>("nope", candidates[i].second); // We are too unsure to even know if it is an object
     }
 
-    return object;
+    if (candidates[i].second > lowCertaintyLimit) {
+        object = "object";    // Too unsure
+    }
+
+    return std::make_pair<std::string, float>(object, candidates[i].second);
 }
 
 classifier::Object getOptimalPickupPoint(pcl_rgb::Ptr & cloud_in) {
@@ -320,7 +328,40 @@ classifier::Object getOptimalPickupPoint(pcl_rgb::Ptr & cloud_in) {
     return point;
 }
 
+bool classifyService(classifier::Classify::Request & req, classifier::Classify::Response & res) {
+    pcl::PCLPointCloud2 pcl_pc2;
+    pcl_conversions::toPCL(req.cloud, pcl_pc2);
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
+    pcl::fromPCLPointCloud2(pcl_pc2, *cloud);
+
+    // Find the color objects
+    for (int i = 0; i < colors.size(); i++) {
+        pcl::PointCloud<pcl::PointXYZRGB>::Ptr color_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+
+        *color_cloud = *cloud;
+
+        pcl::PointIndices::Ptr indices (new pcl::PointIndices());
+
+        std::vector<pcl_rgb::Ptr> objects = PointCloudHelper::getObjects(color_cloud, colors[i], indices, outlierMaxNeighbours, outlierStddev, clusterTolerance, minClusterSize, maxClusterSize);
+
+        for (size_t j = 0; j < objects.size(); j++) {
+            // Classify
+            std::pair<std::string, float> objectType = classify(objects[j], colorNames[i]);
+            if (objectType.first == "nope") {
+                continue;
+            }
+
+            res.color.push_back(colorNames[i]);
+            res.type.push_back(objectType.first);
+        }
+    }
+
+    return true;
+}
+
+
 void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input_cloud) {
+    cloudNum++; // New cloud (mainly used for testing)
     // Filtering input scan to increase speed of registration.
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr filtered_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
 
@@ -364,12 +405,12 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
 
         for (size_t j = 0; j < objects.size(); j++) {
             // Classify
-            std::string objectType = classify(objects[j], colorNames[i]);
-            if (objectType == "nope") {
+            std::pair<std::string, float> objectType = classify(objects[j], colorNames[i]);
+            if (objectType.first == "nope") {
                 continue;
             }
-            if (objectType == "star" && colorNames[i].substr(0, colorNames[i].find("_")) == "orange") {
-                objectType = "patric";
+            if (objectType.first == "star" && colorNames[i].substr(0, colorNames[i].find("_")) == "orange") {
+                objectType.first = "patric";
             }
             //std::cout << objectType << std::endl;
 
@@ -379,14 +420,15 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
             classifier::Object object = getOptimalPickupPoint(objects[j]);
 
             object.y = -object.y;
-            if (objectType != "patric") {
+            if (objectType.first != "patric") {
                 std::cout << colorNames[i].substr(0, colorNames[i].find("_")) << " ";
             }
-            std::cout << objectType << " at: " << "X: " << object.x << ", Y: " << object.y << ", Z: " << object.z << std::endl;
+            std::cout << objectType.first << " (" << objectType.second << ") at: " << "X: " << object.x << ", Y: " << object.y << ", Z: " << object.z <<  std::endl;
 
 
             object.color = colorNames[i].substr(0, colorNames[i].find("_"));
-            object.type = objectType;
+            object.type = objectType.first;
+            object.cloudNum = cloudNum; // Used for testing
 
             // Output
 
@@ -417,6 +459,8 @@ int main(int argc, char **argv) {
 
     object_pub = nh.advertise<classifier::Object> ("objectPos_wheelcenter2", 1);
     point_pub = nh.advertise<geometry_msgs::PointStamped> ("objectPos_wheelcenter", 1);
+
+    ros::ServiceServer service = nh.advertiseService("classify", classifyService);
 
     // Test if this work!
     ros::Rate loop_rate(10.0);
