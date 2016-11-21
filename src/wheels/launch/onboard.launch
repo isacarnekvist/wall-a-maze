@@ -34,8 +34,9 @@
 	<node name="planner" pkg="planner" type="planner_server.py" output="screen"/>
 
 	<!-- UArm -->
-	<!--include file="$(find uarm)/launch/kth_uarm.launch" /-->
+	<include file="$(find uarm)/launch/kth_uarm.launch" />
 	<node name="arm_broadcaster" pkg="manipulation" type="arm_broadcaster.py" />
+	<node name="manipulate" pkg="manipulation" type="manipulate.py" />
 	
 
 	<!-- Speaker node -->
@@ -45,6 +46,6 @@
 	<!--include file="$(find phidgets_imu)/launch/imu.launch"/-->
 
 	<!-- Vision -->
-	<include file="$(find classifier)/launch/classifier.launch"/>
+	<!--include file="$(find classifier)/launch/classifier.launch"/-->
 
 </launch>
