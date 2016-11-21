@@ -10,7 +10,7 @@ orange_hsv: { h_min: 15.0, h_max: 25.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_ma
 
 yellow_hsv: { h_min: 25.0, h_max: 50.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
 
-green_hsv: { h_min: 60.0, h_max: 140.0, s_min: 0.2, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
+green_hsv: { h_min: 60.0, h_max: 130.0, s_min: 0.2, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
 
 blue_hsv: { h_min: 140.0, h_max: 215.0, s_min: 0.2, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
 
@@ -20,7 +20,7 @@ red_2_hsv: { h_min: 355.0, h_max: 360.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_m
 
 red_types: [ 'cube', 'ball' ]
 blue_types: [ 'cube', 'triangle' ]
-green_types: [ 'cylinder', 'cube' ]
+green_types: [ 'cylinder', 'cube', 'hollow cube' ]
 purple_types: [ 'cross', 'star' ]
 yellow_types: [ 'cube', 'ball' ]
 orange_types: [ 'star' ]
@@ -35,11 +35,11 @@ minClusterSize: 100
 maxClusterSize: 25000
 
 # Points Size [ X, Y, Z ]
-pointSize: [ 0.004, 0.004, 0.004 ]
+pointSize: [ 0.005, 0.005, 0.005 ]
 
 # Classifier limits
-lowCertaintyLimit: 400.0 
-highCertaintyLimit: 600.0
+lowCertaintyLimit: 150.0 
+highCertaintyLimit: 150.0
 
 # 'CAD' or 'Real'
 whatTypeOfData: 'Real'

@@ -130,7 +130,7 @@ int main(int argc, char **argv) {
     int right = 0;
     int wrong = 0;
     std::vector<objectTypeAndLocation> wronglyClassified;
-    std::vector<std::vector<std::pair<std::string, std::string> > > classifiedAs;
+    std::vector<std::vector<objectTypeAndLocation> > classifiedAs;
     for (size_t i = 0; i < objectLocations.size(); i++) {
         std::cout << "Testing " << (i+1) << " of " << objectLocations.size() << std::endl;
 
@@ -148,8 +148,12 @@ int main(int argc, char **argv) {
                 wrong++;
                 std::cout << textColor::yellow << "No classification recieved" << textColor::white << std::endl;
                 wronglyClassified.push_back(objectLocations[i]);
-                std::vector<std::pair<std::string, std::string> > classification;
-                classification.push_back(std::make_pair<std::string, std::string>("", ""));
+                objectTypeAndLocation ob;
+                ob.color = "";
+                ob.type = "";
+                ob.certainty = -1;
+                std::vector<objectTypeAndLocation > classification;
+                classification.push_back(ob);
                 classifiedAs.push_back(classification);
             } else if (srv.response.color.size() == 1) {
                 if (srv.response.color[0] == objectLocations[i].color && srv.response.type[0] == objectLocations[i].type) {
@@ -157,21 +161,33 @@ int main(int argc, char **argv) {
                     std::cout << textColor::green << "Correctly classified!" << textColor::white << std::endl;
                 } else {
                     wrong++;
-                    std::cout << textColor::red << "Classified as: " << srv.response.color[0] << " " << srv.response.type[0] << std::endl;
-                    std::cout << "When it was: " << objectLocations[i].color << " " << objectLocations[i].type << textColor::white << std::endl;
+                    std::cout << textColor::red << "When it was:\n\t" << objectLocations[i].color << " " << objectLocations[i].type << std::endl;
+                    std::cout << "It classified it as:\n\t" << srv.response.color[0] << " " << srv.response.type[0] << " (" << srv.response.certainty[0] << ")" << textColor::white << std::endl;
                     wronglyClassified.push_back(objectLocations[i]);
-                    std::vector<std::pair<std::string, std::string> > classification;
-                    classification.push_back(std::make_pair<std::string, std::string>(srv.response.color[0], srv.response.type[0]));
+                    objectTypeAndLocation ob;
+                    ob.color = srv.response.color[0];
+                    ob.type = srv.response.type[0];
+                    ob.certainty = srv.response.certainty[0];
+                    std::vector<objectTypeAndLocation> classification;
+                    classification.push_back(ob);
                     classifiedAs.push_back(classification);
                 }
             } else {
                 wrong++;
-                std::cout << textColor::red << "When it was: " << objectLocations[i].color << " " << objectLocations[i].type << std::endl;
-                std::cout << "It classified it as more than one object" << textColor::white << std::endl;
-                std::vector<std::pair<std::string, std::string> > classification;
+                std::cout << textColor::red << "When it was:\n\t" << objectLocations[i].color << " " << objectLocations[i].type << std::endl;
+                std::cout << "It classified it as:"  << std::endl;
+                for (size_t j = 0; j < srv.response.color.size(); j++) {
+                    std::cout << "\t" << srv.response.color[j] << " " << srv.response.type[j] << " (" << srv.response.certainty[j] << ")" << std::endl;
+                }
+                std::cout << textColor::white;
+                std::vector<objectTypeAndLocation> classification;
 
                 for (size_t j = 0; j < srv.response.color.size(); j++) {
-                    classification.push_back(std::make_pair<std::string, std::string>(srv.response.color[j], srv.response.type[j]));
+                    objectTypeAndLocation ob;
+                    ob.color = srv.response.color[j];
+                    ob.type = srv.response.type[j];
+                    ob.certainty = srv.response.certainty[j];
+                    classification.push_back(ob);
                 }
                 wronglyClassified.push_back(objectLocations[i]);
                 classifiedAs.push_back(classification);
@@ -196,7 +212,9 @@ int main(int argc, char **argv) {
         myfile << "------------\nWhen it was:\n\t" << wronglyClassified[i].color << " " << wronglyClassified[i].type << "\n";
         myfile << "It classified as:\n";
         for (size_t j = 0; j < classifiedAs[i].size(); j++) {
-            myfile << "\t" << classifiedAs[i][j].first << " " << classifiedAs[i][j].second << "\n";
+            if (classifiedAs[i][j].certainty != -1) {
+                myfile << "\t" << classifiedAs[i][j].color << " " << classifiedAs[i][j].type << " (" << classifiedAs[i][j].certainty << ")\n";
+            }
         }
         myfile << "Cloud location:\n\t" << wronglyClassified[i].location << "\n------------\n\n";
     }

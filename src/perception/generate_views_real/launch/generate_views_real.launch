@@ -1,7 +1,9 @@
 <launch>
+	<include file="$(find realsense_camera)/launch/sr300_nodelet_rgbd.launch" />
+	<node name="cam" pkg="classifier" type="cam.sh" />
+
 	<!-- <rosparam file="$(find general)/config/general_params.yaml" command="load" /> -->
 	<rosparam file="$(find generate_views_real)/config/generate_views_real_params.yaml" command="load" />
 	<rosparam file="$(find classifier)/config/classifier_params.yaml" command="load" />
 	<node pkg="generate_views_real" type="generate_views_real" name="generate_views_real" output="screen" />
-		
 </launch>

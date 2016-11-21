@@ -353,6 +353,7 @@ bool classifyService(classifier::Classify::Request & req, classifier::Classify::
 
             res.color.push_back(colorNames[i]);
             res.type.push_back(objectType.first);
+            res.certainty.push_back(objectType.second);
         }
     }
 

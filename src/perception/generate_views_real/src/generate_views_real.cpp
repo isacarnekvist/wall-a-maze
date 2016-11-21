@@ -69,8 +69,8 @@ void pointCloudCallback(sensor_msgs::PointCloud2ConstPtr & input_cloud) {
 
     // Remove NaNs
     //std::cout << "Remove NaNs from cloud" << std::endl;
-    std::vector<int> indicesTemp;
-    pcl::removeNaNFromPointCloud(*cloud, *cloud, indicesTemp);
+    //std::vector<int> indicesTemp;
+    //pcl::removeNaNFromPointCloud(*cloud, *cloud, indicesTemp);
 
     // Make dir for this object
     //std::cout << "Make dir for object" << std::endl;
