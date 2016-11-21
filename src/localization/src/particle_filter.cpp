@@ -24,9 +24,9 @@ void Particle::move(float linear, float angular, float delta_seconds) {
     float k_linear  = (
         0.02 * abs(linear) +
         0.01 * abs(angular) +
-        0.1
+        0.3
     );
-    float k_angular = (0.05 * abs(linear) + 0.01 * abs(angular) + 0.1);
+    float k_angular = (0.05 * abs(linear) + 0.01 * abs(angular) + 0.3);
 
     /* Update with noise! */
     theta += (angular + k_angular * normal_sampler(random_engine)) * delta_seconds * 1.35;
@@ -73,7 +73,7 @@ float Particle::likelihood(const Map &map, const vector<tuple<float, float> > &s
     for (int i = 0; i < n_look_at; i++) {
         discrepancy_sum += discrepancies[i];
     }
-    this->latest_score = exp(-12 * discrepancy_sum / n_look_at);
+    this->latest_score = exp(-32 * discrepancy_sum / n_look_at);
     return this->latest_score;
 }
 
