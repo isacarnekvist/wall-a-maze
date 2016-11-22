@@ -1,5 +1,5 @@
 # Compute Normals
-radiusSearch: 0.03
+radiusSearch: 0.01
 
 # Compute VFH Signature
 normalizeBins: true

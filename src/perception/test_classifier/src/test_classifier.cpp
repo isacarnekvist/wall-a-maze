@@ -129,6 +129,8 @@ int main(int argc, char **argv) {
 
     int right = 0;
     int wrong = 0;
+    int none = 0;
+    int error = 0;
     std::vector<objectTypeAndLocation> wronglyClassified;
     std::vector<std::vector<objectTypeAndLocation> > classifiedAs;
     for (size_t i = 0; i < objectLocations.size(); i++) {
@@ -145,8 +147,8 @@ int main(int argc, char **argv) {
 
         if (client.call(srv)) {
             if (srv.response.color.size() == 0) {
-                wrong++;
-                std::cout << textColor::yellow << "No classification recieved" << textColor::white << std::endl;
+                none++;
+                std::cout << textColor::yellow << "No classification recieved for: " << objectLocations[i].color << " " << objectLocations[i].type << textColor::white << std::endl;
                 wronglyClassified.push_back(objectLocations[i]);
                 objectTypeAndLocation ob;
                 ob.color = "";
@@ -158,7 +160,7 @@ int main(int argc, char **argv) {
             } else if (srv.response.color.size() == 1) {
                 if (srv.response.color[0] == objectLocations[i].color && srv.response.type[0] == objectLocations[i].type) {
                     right++;
-                    std::cout << textColor::green << "Correctly classified!" << textColor::white << std::endl;
+                    std::cout << textColor::green << "Correctly classified: " << srv.response.color[0] << " " << srv.response.type[0] << " (" << srv.response.certainty[0] << ")" << textColor::white << std::endl;
                 } else {
                     wrong++;
                     std::cout << textColor::red << "When it was:\n\t" << objectLocations[i].color << " " << objectLocations[i].type << std::endl;
@@ -193,19 +195,26 @@ int main(int argc, char **argv) {
                 classifiedAs.push_back(classification);
             }
         } else {
+            error++;
             std::cout << textColor::cyan << "Some error..." << textColor::white << std::endl;
         }
         std::cout << std::endl;
     }
 
     std::cout << "Classified " << right << " of " << objectLocations.size() << " (" << ((((float)right)/((float)objectLocations.size())) * 100) << "%) correctly" << std::endl;
+    std::cout << "Did not classify " << none << " of " << objectLocations.size() << " (" << ((((float)none)/((float)objectLocations.size())) * 100) << "%)" << std::endl;
+    std::cout << "Classified " << wrong << " of " << objectLocations.size() << " (" << ((((float)wrong)/((float)objectLocations.size())) * 100) << "%) incorrectly" << std::endl;
+    std::cout << "Error on " << error << " of " << objectLocations.size() << " (" << ((((float)error)/((float)objectLocations.size())) * 100) << "%)" << std::endl;
 
     std::string fileName = getFileName();
 
     std::ofstream myfile;
     myfile.open((save_dir + "/" + fileName + report_extension).c_str(), std::ios::out | std::ios::trunc);
     if (myfile.is_open()) {
-    myfile << "Classified " << right << " of " << objectLocations.size() << " (" << ((((float)right)/((float)objectLocations.size())) * 100) << "%) correctly\n\n";
+    myfile << "Classified " << right << " of " << objectLocations.size() << " (" << ((((float)right)/((float)objectLocations.size())) * 100) << "%) correctly\n";
+    myfile << "Did not classify " << none << " of " << objectLocations.size() << " (" << ((((float)none)/((float)objectLocations.size())) * 100) << "%)\n";
+    myfile << "Classified " << wrong << " of " << objectLocations.size() << " (" << ((((float)wrong)/((float)objectLocations.size())) * 100) << "%) incorrectly\n";
+    myfile << "Error on " << error << " of " << objectLocations.size() << " (" << ((((float)error)/((float)objectLocations.size())) * 100) << "%)\n\n";
     myfile << "Classified these wrong:\n\n";
 
     for (size_t i = 0; i < wronglyClassified.size(); i++) {

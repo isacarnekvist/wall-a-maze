@@ -5,7 +5,7 @@
 #include "perception_helper/vfh_helper.h"
 
 // PCL Features
-#include <pcl/features/normal_3d.h>
+#include <pcl/features/normal_3d_omp.h>
 #include <pcl/features/vfh.h>
 
 
@@ -13,7 +13,7 @@
 namespace VFHHelper {
     void computeCloudNormals(pcl_rgb::Ptr & cloud_in, pcl::PointCloud<pcl::Normal>::Ptr & cloud_normals, double radiusSearch) {
         // Create the normal estimation class, and pass the input dataset to it
-        pcl::NormalEstimation<pcl::PointXYZ, pcl::Normal> ne;
+        pcl::NormalEstimationOMP<pcl::PointXYZ, pcl::Normal> ne;
         ne.setInputCloud (cloud_in);
 
         // Create an empty kdtree representation, and pass it to the normal estimation object.
@@ -21,9 +21,10 @@ namespace VFHHelper {
         pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ> ());
         ne.setSearchMethod (tree);
 
-
         // Use all neighbors in a sphere of radius 3cm
         ne.setRadiusSearch (radiusSearch);
+
+        ne.setViewPoint (std::numeric_limits<float>::max (), std::numeric_limits<float>::max (), std::numeric_limits<float>::max ());
 
         // Compute the features
         ne.compute (*cloud_normals);
@@ -56,6 +57,7 @@ namespace VFHHelper {
         //cvfh.setEPSAngleThreshold(EPSAngle);
         //cvfh.setCurvatureThreshold(maxCurv);
         cvfh.setNormalizeBins(normalizeBins);
+        cvfh.setNormalizeDistance(false);
 
         cvfh.compute(*vfhs);
     }

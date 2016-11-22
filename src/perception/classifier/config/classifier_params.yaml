@@ -35,7 +35,7 @@ minClusterSize: 100
 maxClusterSize: 25000
 
 # Points Size [ X, Y, Z ]
-pointSize: [ 0.005, 0.005, 0.005 ]
+pointSize: [ 0.003, 0.003, 0.003 ]
 
 # Classifier limits
 lowCertaintyLimit: 150.0 
