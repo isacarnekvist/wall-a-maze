@@ -17,8 +17,8 @@ from manipulation.msg import Manipulation
 class Manipulate():
 
 	def __init__(self):
-		self.wheels_pub = rospy.Publisher('motor_controller', Twist, queue_size=1)
-		self.state_pub = rospy.Publisher('manipulation_state', String, queue_size=1) 
+		self.wheels_pub = rospy.Publisher('motor_controller', Twist, queue_size=10)
+		#self.state_pub = rospy.Publisher('manipulation_state', String, queue_size=10) 
 		
 		rospy.init_node('move_arm_client')
 	
@@ -81,19 +81,19 @@ class Manipulate():
 		
 		rate = rospy.Rate(10) #10hz
 	
-		while not rospy.is_shutdown():
-			self.toInitPos()
+		self.toInitPos()
+
+		while not rospy.is_shutdown():			
 			self.check_job()
 			rate.sleep
 			
-		rospy.spin()
 	
 	
 	def toInitPos(self):
 		# Extend to only do once and move up first --> need eef pos_arm
 		if self.inOperation == False:
 			initial_state = self.moveToPos_client(self.initPos_arm, self.move_mode, self.moveDuration_abs, self.interpol_linear) 
-			print("Moved to resting position",initial_state)
+			#print("Moved to resting position",initial_state)
 			
 	
 	
@@ -106,6 +106,7 @@ class Manipulate():
 			print "No job received"
 			return
 		else:
+			print("Doing a job")
 			while self.job != 'cancel' and self.inOperation == True: # ToDo: Restructure such that checked in parallel.
 				if self.inPickupPos == False:
 					self.toPickupPos()
@@ -156,22 +157,59 @@ class Manipulate():
 		# 1. Rotate until object in line of sight and y=0
 		# 2. Move in x until in pickable/preferred x range
 		
-		yTol = 0.03
-		xTol = 0.03
-		xAim = 0.24
+		print("Manipulation moves robot!")
+
+		yTol = 0.02
+		xTol = 0.10
+		xAim = 0.26
 		
 		move_angular = Twist()
 		move_linear = Twist()
-
 		
-		while abs(self.pickupPos_wheel.y) > yTol:
-			move_angular.angular.z = np.sign(self.pickupPos_wheel.y)*0.05 # m/s
-			self.wheels_pub.publish(move_angular)
-			
-		while abs(self.pickupPos_wheel.x-xAim) > xTol:
-			move_linear.linear.x = np.sign(self.pickupPos_wheel.x)*0.05 # m/s
+		'''
+		while self.pickupPos_wheel.x > xAim:
+			print("X offset is {}".format(self.pickupPos_wheel.x))
+			move_linear.linear.x = 0.10 # m/s
 			self.wheels_pub.publish(move_linear)
 			
+		self.wheels_pub.publish(Twist())
+		print("Stopped moving forward, object at x={}".format(self.pickupPos_wheel.x))
+
+		'''
+		times_rotated = 0
+		while times_rotated < 12:
+			try:
+				objectMsg = rospy.wait_for_message("/objectPos_wheelcenter", PointStamped, timeout=0.4)
+				print("Saw an object!")
+				while abs(objectMsg.point.y) > yTol:
+					move_angular.angular.z = np.sign(objectMsg.point.y)*0.8 # m/s
+					self.wheels_pub.publish(move_angular)
+					rospy.sleep(0.2)
+					self.wheels_pub.publish(Twist())		
+					objectMsg = rospy.wait_for_message("/objectPos_wheelcenter", PointStamped,timeout=0.4)
+					print("Y offset is {}".format(objectMsg.point.y))
+				self.wheels_pub.publish(Twist())
+
+				print("Stopped rotating, object at y={}".format(self.pickupPos_wheel.y))
+				
+				while objectMsg.point.x > xAim:
+					move_linear.linear.x = 0.10 # m/s
+					self.wheels_pub.publish(move_linear)
+					objectMsg = rospy.wait_for_message("/objectPos_wheelcenter", PointStamped,timeout=0.4)
+					print("X offset is {}".format(objectMsg.point.x))
+				self.wheels_pub.publish(Twist())
+				print("Stopped moving forward, object at x={}".format(objectMsg.point.x))
+				break
+			except(rospy.ROSException),e:	
+				print("Rotate")
+				move_angular.angular.z = 1.0 # m/s
+				self.wheels_pub.publish(move_angular)		
+				times_rotated += 1
+				print("Times rotated {}".format(times_rotated))
+				rospy.sleep(0.6)
+				self.wheels_pub.publish(Twist())
+		#'''
+
 		self.inPickupPos = True
 		
 		
@@ -256,7 +294,7 @@ class Manipulate():
 			response = self.moveTo_service(position, self.eef_orientation, move_mode, move_duration, self.ignore_orientation, int_type, self.check_limits)
 			if response.error == True:
 				print "Unable to move to position {}. Returning to initial pos.".format(position)
-				self.inOperation = False
+				#self.inOperation = False
 			return response
 		except rospy.ServiceException, e:
 			print "MoveTo service call failed: %s"%e
@@ -382,7 +420,7 @@ class Manipulate():
 		
 				
 	def pickup(self):
-		aboveGoal_pos = Point(self.pickupPos_arm.x, self.pickupPos_arm.y, self.pickupPos_arm.z + 4.0)			
+		aboveGoal_pos = Point(self.pickupPos_arm.x, self.pickupPos_arm.y, self.pickupPos_arm.z + 6.0)#correct 6		
 	
 		aboveGoal_state = self.moveToPos_client(aboveGoal_pos, self.move_mode, self.moveDuration_abs, self.interpol_linear)
 		print("Moved above goal", aboveGoal_state)
@@ -399,7 +437,7 @@ class Manipulate():
 		
 		# Modify goal pos to go to lower z
 		pickupPos_arm_low = pickupPos_high_new
-		pickupPos_arm_low.z = self.pickupPos_arm.z
+		pickupPos_arm_low.z = self.pickupPos_arm.z	#change when perception correct
 		
 		# Turn on pump
 		self.pump_control(True)
@@ -407,7 +445,7 @@ class Manipulate():
 		# Move down with corrected x,y
 		atGoal_state = self.moveToPos_client(pickupPos_arm_low,self.move_mode, self.moveDuration_abs, self.interpol_linear)
 		
-		
+		'''
 		#-- Move absolute to reduce offset --#
 		atGoal_state = self.moveToPos_client(pickupPos_arm_low,self.move_mode, self.moveDuration_abs, self.interpol_linear)
 		
@@ -418,12 +456,12 @@ class Manipulate():
 		
 		#atGoal_state = self.moveToJointPos_control(pickupPos_arm_low)
 		print("Moved to target", atGoal_state)
-		
+		'''
 		
 		if atGoal_state.error == False:
 			print "Changed pickup status to picked up !"
 			self.isPickedUp = True
-			self.state_pub('pickedUp')	
+			#self.state_pub("pickedUp")	
 	
 		# Move back up
 		aboveGoal_state = self.moveToPos_client(aboveGoal_pos, self.move_mode, self.moveDuration_abs, self.interpol_linear)

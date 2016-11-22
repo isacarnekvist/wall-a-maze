@@ -27,7 +27,7 @@ def callback(data):
 	msg.placePos = PointStamped(header,placePoint)
 	
 	pub.publish(msg)
-
+	#print("Point published {}".format(msg))
 
 
 if __name__ == '__main__':
@@ -35,5 +35,20 @@ if __name__ == '__main__':
 	rospy.init_node('talker', anonymous=True)
 	
 	rospy.Subscriber("/objectPos_wheelcenter", PointStamped, callback)
+
 	
+	#rate = rospy.Rate(1)
+	i=0
+	notInSight = False
+	if notInSight:
+		#while not rospy.is_shutdown():
+		while i<50:
+			newObject = PointStamped()
+			newObject.header.frame_id = 'wheel_center'
+			newObject.point = Point(0.20,0.05,0.03)
+			callback(newObject)
+			i+=1
+		#rate.sleep()
+	
+
 	rospy.spin()
