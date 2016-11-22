@@ -57,7 +57,11 @@ namespace VFHHelper {
         //cvfh.setEPSAngleThreshold(EPSAngle);
         //cvfh.setCurvatureThreshold(maxCurv);
         cvfh.setNormalizeBins(normalizeBins);
-        cvfh.setNormalizeDistance(false);
+        //cvfh.setNormalizeDistance(false);
+
+	//cvfh.setUseGivenNormal(true);
+	//cvfh.setFillSizeComponent(true);
+	cvfh.setViewPoint (std::numeric_limits<float>::max (), std::numeric_limits<float>::max (), std::numeric_limits<float>::max ());
 
         cvfh.compute(*vfhs);
     }

@@ -395,6 +395,7 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
 
     //pcl::transformPointCloud(*filtered_cloud, *filtered_cloud, translation, rotation);
 
+    std::vector<std::string> detectedObjects;
     // Find the color objects
     for (int i = 0; i < colors.size(); i++) {
         pcl::PointCloud<pcl::PointXYZRGB>::Ptr color_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
@@ -421,9 +422,12 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
             classifier::Object object = getOptimalPickupPoint(objects[j]);
 
             object.y = -object.y;
+	    std::string temp;
             if (objectType.first != "patric") {
+		temp = colorNames[i].substr(0, colorNames[i].find("_")) + " ";
                 std::cout << colorNames[i].substr(0, colorNames[i].find("_")) << " ";
             }
+	    detectedObjects.push_back(temp + objectType.first);
             std::cout << objectType.first << " (" << objectType.second << ") at: " << "X: " << object.x << ", Y: " << object.y << ", Z: " << object.z <<  std::endl;
 
 
@@ -443,6 +447,18 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
             object_pub.publish(object);
             point_pub.publish(point);
         }
+    }
+
+    std::string output = "[ ";
+    for (size_t i = 0; i < detectedObjects.size(); i++) {
+	output += detectedObjects[i];
+	if (i < detectedObjects.size() - 1) {
+		output += ", ";
+	}
+    }
+    output += " ]";
+    if (detectedObjects.size() != 0) {
+	//std::cout << output << std::endl;
     }
 
     // Find other obstacles
