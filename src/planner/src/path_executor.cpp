@@ -14,6 +14,8 @@
 #include <planner/PathPlan.h>
 #include <planner/PlannerTargetAction.h>
 
+const static float INF = std::numeric_limits<float>::infinity();
+
 using namespace std;
 
 /* LinePlan states */
@@ -104,6 +106,24 @@ public:
     float theta;
 };
 
+PathController::PathController(ros::NodeHandle &node_handle) :
+    server (
+        node_handle,
+        "path_executor",
+        boost::bind(&PathController::execute_callback, this, _1),
+        false
+    )
+{
+    scans = vector<geometry_msgs::Point32>();
+    motor_publisher = node_handle.advertise<geometry_msgs::Twist>("/motor_controller", 10);
+    path_publisher = node_handle.advertise<nav_msgs::Path>("/path", 10);
+    path_plan_client = node_handle.serviceClient<planner::PathPlan>("path_plan");
+    path_plan_client.waitForExistence();
+    executing_plan = false;
+    server.start();
+    cout << "server started" << endl;
+}
+
 void PathController::publish_path(const planner::PathPlan &srv, int current_section) {
     nav_msgs::Path path;
     path.header.frame_id = "map";
@@ -150,6 +170,9 @@ float PathController::line_execution_speed(const LinePlan &lp) {
         return -1;
     }
     float angle_error_factor = max(0.5, pow(1 - abs(closest_theta_adjustment(theta, atan2(lp.target_y - y, lp.target_x - x))) / M_PI, 4));
+    float closest_point = INF;
+    for (const geometry_msgs::Point32 &p : scans) {
+    }
     /* Add logic to slow down if walls close by */
     return MAX_LINEAR_SPEED * angle_error_factor;
 }
@@ -241,36 +264,17 @@ void PathController::execute_plan(LinePlan &lp) {
     }
 }
 
-PathController::PathController(ros::NodeHandle &node_handle) :
-    server (
-        node_handle,
-        "path_executor",
-        boost::bind(&PathController::execute_callback, this, _1),
-        false
-    )
-{
-    motor_publisher = node_handle.advertise<geometry_msgs::Twist>("/motor_controller", 10);
-    path_publisher = node_handle.advertise<nav_msgs::Path>("/path", 10);
-    path_plan_client = node_handle.serviceClient<planner::PathPlan>("path_plan");
-    path_plan_client.waitForExistence();
-    executing_plan = false;
-    server.start();
-    cout << "server started" << endl;
-}
-
 void PathController::laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) {
-    cout << "there be lazers!" << endl;
-    // scans = vector<geometry_msgs::Point32>();
-    // for (int degree = 0; degree < 360; degree++) {
-    //     float distance = msg->ranges[degree];
-    //     if (distance == INF || distance < 0.4) continue;
-    //     float alpha = M_PI * (degree + 88.5) / 180.0;
-    //     float x = distance * cos(alpha) + 0.08;
-    //     float y = distance * sin(alpha) + 0.009;
-    //     float alpha_prim = atan2(y, x);
-    //     float dist_prim = sqrt(pow(x, 2) + pow(y, 2));
-    //     scans.push_back(Point32(alpha_prim, dist_prim));
-    // }
+    scans = vector<geometry_msgs::Point32>();
+    geometry_msgs::Point32 point;
+    for (int degree = 0; degree < 360; degree++) {
+        float distance = msg->ranges[degree];
+        if (distance == INF || distance < 0.10) continue;
+        float alpha = M_PI * (degree + 88.5) / 180.0;
+        point.x = distance * cos(alpha) + 0.08;
+        point.y = distance * sin(alpha) + 0.009;
+        scans.push_back(point);
+    }
 }
 
 void PathController::stop_motors() {
