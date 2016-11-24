@@ -24,6 +24,14 @@ add_message_files(
   Manipulation.msg
 )
 
+add_service_files(
+  FILES
+  CarryObject.srv
+  DropObject.srv
+  PickupObject.srv
+  PickupTrap.srv
+  PlaceObject.srv
+)
 
 generate_messages(
   DEPENDENCIES

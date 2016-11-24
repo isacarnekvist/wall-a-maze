@@ -11,6 +11,7 @@ from geometry_msgs.msg import Point, PointStamped, Twist
 from std_msgs.msg import Header, String
 from manipulation.msg import Manipulation
 
+from perception.srv import FindObject
 
 
 
@@ -136,7 +137,7 @@ class Manipulate():
 						
 
 	def objectPos_client(self,request,select):
-		rospy.wait_for_service('insert_name')	#Does this take long?
+		rospy.wait_for_service('find_object')	#Does this take long?
 		deltaX = None
 		deltaY = None
 		deltaZ = None
@@ -145,7 +146,7 @@ class Manipulate():
 		delta = 100 # Assuming meters
 
 		try:
-			get_objectPos = rospy.ServiceProxy('insert_name', NAME)
+			get_objectPos = rospy.ServiceProxy('find_object', FindObject)
 			response = get_objectPos(request.color,request.type)
 
 			# Check if requested object detected
@@ -174,7 +175,7 @@ class Manipulate():
 			number = 0
 
 			objectPos = PointStamped()
-			objectPos.header.frame_id = response.frame_id
+			objectPos.header.frame_id = response.header.frame_id
 			objectPos.point = Point(response.x(number),response.y(number),response.z(number))
 
 			return objectPos
