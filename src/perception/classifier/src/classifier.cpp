@@ -471,6 +471,9 @@ bool classifyService(classifier::Find_Object::Request & req, classifier::Find_Ob
         res.z.push_back(objects[i].z);
     }
 
+    res.header.frame_id = "wheel_center";
+    res.header.stamp = ros::Time();
+
     return true;
 }
 
