@@ -175,8 +175,17 @@ void PathController::execute_plan(LinePlan &lp) {
         break;
     case BEFORE_LINE_EXECUTION:
         if (ros::Time::now() >= lp.deadline) {
-            cout << "Switching to state EXECUTING_LINE" << endl;
-            lp.state = EXECUTING_LINE;
+            theta_correction = closest_theta_adjustment(theta, atan2(lp.target_y - y, lp.target_x - x));
+            if (abs(theta_correction) > 0.10) {
+                time_needed = abs(theta_correction / INITIAL_ROTATION_SPEED);
+                lp.deadline = ros::Time::now() + ros::Duration(time_needed);
+                lp.state = INITIAL_ROTATION;
+                cout << "Re-switching to state INITIAL_ROTATION" << endl;
+                publish_twist(0.0, sign(theta_correction) * INITIAL_ROTATION_SPEED);
+            } else {
+                cout << "Switching to state EXECUTING_LINE" << endl;
+                lp.state = EXECUTING_LINE;
+            }
         }
         break;
     case EXECUTING_LINE:
