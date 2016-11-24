@@ -44,20 +44,14 @@ class DetectedObject:
 class Mother:
 
     def __init__(self):
-<<<<<<< HEAD
-        self.planner = rospy.Publisher('planner', PlannerTarget, queue_size=10)
         self.arm = rospy.Publisher('mother/manipulation', Manipulation, queue_size=10)
         self.speaker = rospy.Publisher('espeak/string', String, queue_size=10)
         self.evidence = rospy.Publisher('/evidence', RAS_Evidence, queue_size=10)
-=======
         self.planner_client = actionlib.SimpleActionClient(
             'path_executor',
             PlannerTargetAction
         )
         self.planner_client.wait_for_server()
-        self.arm = rospy.Publisher('mother/manipulation', Manipulation, queue_size=1)
-        self.speaker = rospy.Publisher('espeak/string', String, queue_size=1)
->>>>>>> planner-cpp
         self.x = None
         self.y = 0.0
         self.theta = 0.0
