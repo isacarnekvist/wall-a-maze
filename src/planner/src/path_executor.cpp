@@ -6,6 +6,7 @@
 #include <nav_msgs/Path.h>
 #include <geometry_msgs/Twist.h>
 #include <geometry_msgs/Point32.h>
+#include <sensor_msgs/LaserScan.h>
 #include <tf/transform_datatypes.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <actionlib/server/simple_action_server.h>
@@ -86,9 +87,11 @@ public:
     LinePlan get_line_plan(float x, float y, float theta, bool ignore_theta);
     LinePlan get_line_plan(float x, float y) { return get_line_plan(x, y, 0.0, true); }
     float line_execution_speed(const LinePlan &lp);
+    vector<geometry_msgs::Point32> scans;
     bool executing_plan;
     void execute_callback(const planner::PlannerTargetGoal::ConstPtr &msg);
     void position_callback(const geometry_msgs::PoseStamped::ConstPtr &msg);
+    void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg);
     void publish_twist(float linear, float angular);
     void publish_path(const planner::PathPlan &srv, int current_section);
     void preempt_callback();
@@ -255,6 +258,21 @@ PathController::PathController(ros::NodeHandle &node_handle) :
     cout << "server started" << endl;
 }
 
+void PathController::laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) {
+    cout << "there be lazers!" << endl;
+    // scans = vector<geometry_msgs::Point32>();
+    // for (int degree = 0; degree < 360; degree++) {
+    //     float distance = msg->ranges[degree];
+    //     if (distance == INF || distance < 0.4) continue;
+    //     float alpha = M_PI * (degree + 88.5) / 180.0;
+    //     float x = distance * cos(alpha) + 0.08;
+    //     float y = distance * sin(alpha) + 0.009;
+    //     float alpha_prim = atan2(y, x);
+    //     float dist_prim = sqrt(pow(x, 2) + pow(y, 2));
+    //     scans.push_back(Point32(alpha_prim, dist_prim));
+    // }
+}
+
 void PathController::stop_motors() {
     motor_publisher.publish(geometry_msgs::Twist());
 }
@@ -345,6 +363,12 @@ int main(int argc, char **argv) {
         "/position",
         1,
         &PathController::position_callback,
+        &pc
+    );
+    ros::Subscriber laser_subscriber = node_handle.subscribe(
+        "/scan",
+        10,
+        &PathController::laser_callback,
         &pc
     );
     ros::Rate rate (128);
