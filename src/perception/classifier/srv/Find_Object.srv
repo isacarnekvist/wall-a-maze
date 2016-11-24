@@ -1,0 +1,11 @@
+sensor_msgs/PointCloud2 cloud
+string[] color
+string[] type
+---
+std_msgs/Header header
+string[] color
+string[] type
+float32[] x
+float32[] y
+float32[] z
+float32[] certainty

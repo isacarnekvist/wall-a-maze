@@ -7,12 +7,14 @@
 #include "geometry_msgs/PointStamped.h"
 
 // Own
+#include "classifier.h"
 #include <perception_helper/vfh_helper.h>
 #include <perception_helper/hsv_color.h>
 #include <perception_helper/point_cloud_helper.h>
 
 #include "classifier/Object.h"
 #include "classifier/Classify.h"
+#include "classifier/Find_Object.h"
 
 // C++ General
 #include <iostream>
@@ -328,20 +330,46 @@ classifier::Object getOptimalPickupPoint(pcl_rgb::Ptr & cloud_in) {
     return point;
 }
 
-bool classifyService(classifier::Classify::Request & req, classifier::Classify::Response & res) {
-    pcl::PCLPointCloud2 pcl_pc2;
-    pcl_conversions::toPCL(req.cloud, pcl_pc2);
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
-    pcl::fromPCLPointCloud2(pcl_pc2, *cloud);
+void findObjects(pcl::PointCloud<pcl::PointXYZRGB>::Ptr & input_cloud, std::vector<foundObject> & foundObjects) {
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr filtered_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
 
+    PointCloudHelper::resizePoints(input_cloud, filtered_cloud, pointSize[0], pointSize[1], pointSize[2]);
+
+    // Transform
+    const Eigen::Vector3f translation(transform_y, -transform_z, transform_x);
+
+    double yaw = transform_yaw * PI / 180.0;
+    //double roll = -30.0 * PI / 180.0;
+    //double roll = -42.0 * PI / 180.0;
+    double roll = -transform_roll * PI / 180.0;
+    double pitch = transform_pitch * PI / 180.0;
+
+    double t0 = std::cos(yaw * 0.5f);
+    double t1 = std::sin(yaw * 0.5f);
+    double t2 = std::cos(roll * 0.5f);
+    double t3 = std::sin(roll * 0.5f);
+    double t4 = std::cos(pitch * 0.5f);
+    double t5 = std::sin(pitch * 0.5f);
+
+    double w = t0 * t2 * t4 + t1 * t3 * t5;
+    double x = t0 * t3 * t4 - t1 * t2 * t5;
+    double y = t0 * t2 * t5 + t1 * t3 * t4;
+    double z = t1 * t2 * t4 - t0 * t3 * t5;
+
+    //std::cout << "w: " << w << "\tx: " << x << "\ty: " << y << "\tz: " << z << std::endl;
+
+    Eigen::Quaternionf rotation(w, x, y, z);
+
+    //pcl::transformPointCloud(*filtered_cloud, *filtered_cloud, translation, rotation);
+
+    std::vector<std::string> detectedObjects;
     // Find the color objects
     for (int i = 0; i < colors.size(); i++) {
         pcl::PointCloud<pcl::PointXYZRGB>::Ptr color_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
 
-        *color_cloud = *cloud;
+        *color_cloud = *filtered_cloud;
 
         pcl::PointIndices::Ptr indices (new pcl::PointIndices());
-
         std::vector<pcl_rgb::Ptr> objects = PointCloudHelper::getObjects(color_cloud, colors[i], indices, outlierMaxNeighbours, outlierStddev, clusterTolerance, minClusterSize, maxClusterSize);
 
         for (size_t j = 0; j < objects.size(); j++) {
@@ -350,12 +378,101 @@ bool classifyService(classifier::Classify::Request & req, classifier::Classify::
             if (objectType.first == "nope") {
                 continue;
             }
+            //if (objectType.first == "star" && colorNames[i].substr(0, colorNames[i].find("_")) == "orange") {
+            //    objectType.first = "patric";
+            //}
+            //std::cout << objectType << std::endl;
 
-            res.color.push_back(colorNames[i]);
-            res.type.push_back(objectType.first);
-            res.certainty.push_back(objectType.second);
+            // Filter so only top remains
+            // TODO: Do this before classify?!
+            pcl::transformPointCloud(*objects[j], *objects[j], translation, rotation);
+            classifier::Object object = getOptimalPickupPoint(objects[j]);
+
+            foundObject fObject;
+            fObject.color = colorNames[i].substr(0, colorNames[i].find("_"));
+            fObject.type = objectType.first;
+            fObject.certainty = objectType.second;
+            fObject.x = object.x;
+            fObject.y = -object.y;
+            fObject.z = object.z;
+
+            foundObjects.push_back(fObject);
         }
     }
+}
+
+bool classifyService(classifier::Find_Object::Request & req, classifier::Find_Object::Response & res) {
+    // Check if there is a point cloud included
+    if (req.cloud.data.size() == 0) {
+        sensor_msgs::PointCloud2ConstPtr msg = ros::topic::waitForMessage<sensor_msgs::PointCloud2>("camera/depth_registered/points", ros::Duration(10));
+
+        if (msg == NULL) {
+            return false;
+        }
+
+        req.cloud = *msg;
+    }
+
+    pcl::PCLPointCloud2 pcl_pc2;
+    pcl_conversions::toPCL(req.cloud, pcl_pc2);
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
+    pcl::fromPCLPointCloud2(pcl_pc2, *cloud);
+
+    std::vector<foundObject> objects;
+    findObjects(cloud, objects);
+
+    std::vector<foundObject>::iterator it = objects.begin();
+    while (it != objects.end()) {
+        bool keep = false;
+
+        if (req.color.size() != 0) {
+            for (size_t i = 0; i < req.color.size(); i++) {
+                if (req.type.size() != 0) {
+                    for (size_t j = 0; j < req.type.size(); j++) {
+                        if (req.color[i] == it->color && req.type[j] == it->type) {
+                            keep = true;
+                            break;
+                        }
+                    }
+                    if (keep) {
+                        break;
+                    }
+                } else {
+                    if (req.color[i] == it->color) {
+                        keep = true;
+                        break;
+                    }
+                }
+            }
+        } else if (req.type.size() != 0){
+            for (size_t i = 0; i < req.type.size(); i++) {
+                if (req.type[i] == it->type) {
+                    keep = true;
+                    break;
+                }
+            }
+        } else {
+            keep = true;
+        }
+
+        if (!keep) {
+            it = objects.erase(it);
+        } else {
+            it++;
+        }
+    }
+
+    for (size_t i = 0; i < objects.size(); i++) {
+        res.color.push_back(objects[i].color);
+        res.type.push_back(objects[i].type);
+        res.certainty.push_back(objects[i].certainty);
+        res.x.push_back(objects[i].x);
+        res.y.push_back(objects[i].y);
+        res.z.push_back(objects[i].z);
+    }
+
+    res.header.frame_id = "wheel_center";
+    res.header.stamp = ros::Time();
 
     return true;
 }
@@ -477,7 +594,7 @@ int main(int argc, char **argv) {
     object_pub = nh.advertise<classifier::Object> ("objectPos_wheelcenter2", 1);
     point_pub = nh.advertise<geometry_msgs::PointStamped> ("objectPos_wheelcenter", 1);
 
-    ros::ServiceServer service = nh.advertiseService("classify", classifyService);
+    ros::ServiceServer service = nh.advertiseService("find_object", classifyService);
 
     // Test if this work!
     ros::Rate loop_rate(10.0);
