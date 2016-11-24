@@ -163,18 +163,34 @@ LinePlan PathController::get_line_plan(float target_x, float target_y, float tar
     return res;
 }
 
-const static float MAX_LINEAR_SPEED = 0.18;
+const static float MAX_LINEAR_SPEED = 0.25;
 float PathController::line_execution_speed(const LinePlan &lp) {
     /* Have we travelled far enough? */
     if (euclidean(lp.start_x - lp.target_x, lp.start_y - lp.target_y) - 0.04 <= euclidean(lp.start_x - x, lp.start_y - y)) {
         return -1;
     }
     float angle_error_factor = max(0.5, pow(1 - abs(closest_theta_adjustment(theta, atan2(lp.target_y - y, lp.target_x - x))) / M_PI, 4));
-    float closest_point = INF;
+    const static float CLOSEST_MAX = 0.5;
+    float closest_point = CLOSEST_MAX;
     for (const geometry_msgs::Point32 &p : scans) {
+        /* Finding closest point in this area:
+         *
+         * xxxxxx   xxxxxx
+         * xxxxxx ^ xxxxxx    x
+         * xxxxxx | xxxxxx    ^
+         * xxx o-----o xxx    |
+         *     |WALL-|        |
+         *     +  E  +        |
+         *
+         */
+        if (p.x < 0) continue;
+        if (abs(p.y) < 0.1) continue;
+        closest_point = min(closest_point, euclidean(p.x, p.y));
     }
+    float closeness_factor = 1 - (CLOSEST_MAX - closest_point) / CLOSEST_MAX;
+    cout << "closeness_factor: " << closeness_factor << endl;
     /* Add logic to slow down if walls close by */
-    return MAX_LINEAR_SPEED * angle_error_factor;
+    return MAX_LINEAR_SPEED * angle_error_factor * closeness_factor;
 }
 
 void PathController::execute_plan(LinePlan &lp) {
