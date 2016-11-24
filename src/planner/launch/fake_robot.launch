@@ -1,0 +1,12 @@
+<launch>
+  	<!-- export ROS_MASTER_URI=http://192.168.1.206:11311 -->
+
+	<node name="laser_broadcaster" pkg="localization" type="laser_broadcaster.py" />
+	<node name="robot_broadcaster" pkg="localization" type="robot_broadcaster.py" />
+	<node name="localization" pkg="localization" type="localization" output="screen"/>
+	
+	<!-- Planner -->
+	<node name="planner" pkg="planner" type="planner_server.py" output="screen"/>
+	<node name="fake_robot" pkg="localization" type="fake_robot_node.py" output="screen"/>
+
+</launch>
