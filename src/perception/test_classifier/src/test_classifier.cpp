@@ -30,7 +30,7 @@
 // Own
 #include <perception_helper/point_cloud_helper.h>
 #include <perception_helper/hsv_color.h>
-#include "classifier/Classify.h"
+#include "classifier/Find_Object.h"
 #include "objectTypeAndLocation.h"
 #include <perception_helper/text_color.h>
 
@@ -123,7 +123,7 @@ int main(int argc, char **argv) {
 
     std::cout << textColor::white;
 
-    ros::ServiceClient client = nh.serviceClient<classifier::Classify>("classify");
+    ros::ServiceClient client = nh.serviceClient<classifier::Find_Object>("find_object");
 
     std::vector<objectTypeAndLocation> objectLocations = getObjectLocations();
 
@@ -142,7 +142,7 @@ int main(int argc, char **argv) {
         sensor_msgs::PointCloud2 cloud_ros;
         pcl::toROSMsg(*cloud, cloud_ros);
 
-        classifier::Classify srv;
+        classifier::Find_Object srv;
         srv.request.cloud = cloud_ros;
 
         if (client.call(srv)) {
