@@ -9,9 +9,11 @@ from time import sleep
 import tf
 import rospy
 import numpy as np
+import actionlib
 from std_msgs.msg import String
-from planner.msg import PlannerTarget
 from geometry_msgs.msg import PoseStamped, PointStamped
+
+from planner.msg import PlannerTargetGoal, PlannerTargetAction
 from classifier.msg import Object as classifierObject
 from manipulation.msg import Manipulation
 
@@ -39,7 +41,11 @@ class DetectedObject:
 class Mother:
 
     def __init__(self):
-        self.planner = rospy.Publisher('planner', PlannerTarget, queue_size=1)
+        self.planner_client = actionlib.SimpleActionClient(
+            'path_executor',
+            PlannerTargetAction
+        )
+        self.planner_client.wait_for_server()
         self.arm = rospy.Publisher('mother/manipulation', Manipulation, queue_size=1)
         self.speaker = rospy.Publisher('espeak/string', String, queue_size=1)
         self.x = None
@@ -56,13 +62,17 @@ class Mother:
         pickup_goal = None
         rate = rospy.Rate(10)
         if x is not None:
-            last_target = PlannerTarget(x=x, y=y, theta=theta, is_abort_action=False)
-            self.planner.publish(last_target)
+            goal = PlannerTargetGoal()
+            goal.x = x
+            goal.y = y
+            goal.theta = theta
+            self.planner_client.send_goal(goal)
         while not rospy.is_shutdown():
             rate.sleep()
+        self.planner_client.cancel_goal()
 
     def stop(self):
-        self.planner.publish(PlannerTarget(is_abort_action=True))
+        self.planner_client.cancel_goal()
 
     def perception_callback(self, data):
         if self.x is None: # fix this properly!
@@ -131,11 +141,11 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
+    rospy.init_node('motherbrain')
     mother = Mother()
     rospy.Subscriber('objectPos_wheelcenter2', classifierObject, mother.perception_callback)
     rospy.Subscriber('position', PoseStamped, mother.position_callback)
     #rospy.Subscriber('/imu/collision', String, mother.collision)
-    rospy.init_node('motherbrain')
 
     x, y, theta = None, None, None
     if args.which == 'goto':

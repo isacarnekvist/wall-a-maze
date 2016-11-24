@@ -1,6 +1,7 @@
 #include <math.h>
 #include <iostream>
 
+#include <tf/tf.h>
 #include <ros/ros.h>
 #include <nav_msgs/Path.h>
 #include <geometry_msgs/Twist.h>
@@ -182,7 +183,8 @@ void PathController::execute_plan(LinePlan &lp) {
         forward_speed = line_execution_speed(lp);
         theta_correction = closest_theta_adjustment(theta, atan2(lp.target_y - y, lp.target_x - x));
         if (forward_speed > 0) {
-            publish_twist(forward_speed, min(0.6 * theta_correction, sign(theta_correction) * 0.8));
+            publish_twist(forward_speed, 0.1 * theta_correction);
+            //publish_twist(forward_speed, min(0.6 * theta_correction, sign(theta_correction) * 0.8));
         } else {
             lp.deadline = ros::Time::now() + ros::Duration(1.0);
             publish_twist(0, 0);
@@ -321,7 +323,9 @@ void PathController::position_callback(const geometry_msgs::PoseStamped::ConstPt
         msg->pose.orientation.z,
         msg->pose.orientation.w
     );
-    theta = q.getAngle();
+    double roll, pitch, yaw;
+    tf::Matrix3x3(q).getRPY(roll, pitch, yaw);
+    theta = yaw;
 }
 
 int main(int argc, char **argv) {
