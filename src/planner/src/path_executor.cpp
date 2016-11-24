@@ -28,7 +28,8 @@ enum LINEPLAN_STATE {
     TARGET_ROTATION,
     BEFORE_DONE,
     DONE,
-    OBSTRUCTED
+    REPLANNING,
+    REPLANNING_DONE
 };
 
 typedef struct LinePlan {
@@ -89,11 +90,13 @@ public:
     LinePlan get_line_plan(float x, float y, float theta, bool ignore_theta);
     LinePlan get_line_plan(float x, float y) { return get_line_plan(x, y, 0.0, true); }
     float line_execution_speed(const LinePlan &lp);
+    bool path_is_obstructed(const LinePlan &lp);
     vector<geometry_msgs::Point32> scans;
     bool executing_plan;
     void execute_callback(const planner::PlannerTargetGoal::ConstPtr &msg);
     void position_callback(const geometry_msgs::PoseStamped::ConstPtr &msg);
     void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg);
+    void obstacles_callback(const geometry_msgs::Polygon::ConstPtr &msg);
     void publish_twist(float linear, float angular);
     void publish_path(const planner::PathPlan &srv, int current_section);
     void preempt_callback();
@@ -163,14 +166,14 @@ LinePlan PathController::get_line_plan(float target_x, float target_y, float tar
     return res;
 }
 
-const static float MAX_LINEAR_SPEED = 0.25;
+const static float MAX_LINEAR_SPEED = 0.20;
 float PathController::line_execution_speed(const LinePlan &lp) {
     /* Have we travelled far enough? */
-    if (euclidean(lp.start_x - lp.target_x, lp.start_y - lp.target_y) - 0.04 <= euclidean(lp.start_x - x, lp.start_y - y)) {
+    if (euclidean(lp.start_x - lp.target_x, lp.start_y - lp.target_y) - 0.02 <= euclidean(lp.start_x - x, lp.start_y - y)) {
         return -1;
     }
     float angle_error_factor = max(0.5, pow(1 - abs(closest_theta_adjustment(theta, atan2(lp.target_y - y, lp.target_x - x))) / M_PI, 4));
-    const static float CLOSEST_MAX = 0.5;
+    const static float CLOSEST_MAX = 0.3;
     float closest_point = CLOSEST_MAX;
     for (const geometry_msgs::Point32 &p : scans) {
         /* Finding closest point in this area:
@@ -188,8 +191,6 @@ float PathController::line_execution_speed(const LinePlan &lp) {
         closest_point = min(closest_point, euclidean(p.x, p.y));
     }
     float closeness_factor = 1 - (CLOSEST_MAX - closest_point) / CLOSEST_MAX;
-    cout << "closeness_factor: " << closeness_factor << endl;
-    /* Add logic to slow down if walls close by */
     return MAX_LINEAR_SPEED * angle_error_factor * closeness_factor;
 }
 
@@ -231,13 +232,20 @@ void PathController::execute_plan(LinePlan &lp) {
         }
         break;
     case EXECUTING_LINE:
+        if (path_is_obstructed(lp)) {
+            lp.deadline = ros::Time::now() + ros::Duration(3.0);
+            publish_twist(0, 0);
+            cout << "Switching to state REPLANNING" << endl;
+            lp.state = REPLANNING;
+            break;
+        }
         forward_speed = line_execution_speed(lp);
         theta_correction = closest_theta_adjustment(theta, atan2(lp.target_y - y, lp.target_x - x));
         if (forward_speed > 0) {
             publish_twist(forward_speed, 0.1 * theta_correction);
             //publish_twist(forward_speed, min(0.6 * theta_correction, sign(theta_correction) * 0.8));
         } else {
-            lp.deadline = ros::Time::now() + ros::Duration(1.0);
+            lp.deadline = ros::Time::now() + ros::Duration(0.5);
             publish_twist(0, 0);
             if (lp.ignore_target_theta) {
                 cout << "Switching to state BEFORE_DONE, skipping TARGET_ROTATION" << endl;
@@ -262,13 +270,21 @@ void PathController::execute_plan(LinePlan &lp) {
     case TARGET_ROTATION:
         if (ros::Time::now() >= lp.deadline) {
             publish_twist(0, 0);
-            lp.deadline = ros::Time::now() + ros::Duration(1.0);
+            lp.deadline = ros::Time::now() + ros::Duration(0.5);
             cout << "Switching to state BEFORE_DONE" << endl;
             lp.state = BEFORE_DONE;
         }
         break;
     case BEFORE_DONE:
         if (ros::Time::now() >= lp.deadline) {
+            cout << "Switching to state DONE" << endl;
+            publish_twist(0, 0);
+            lp.state = DONE;
+        }
+        break;
+    case REPLANNING:
+        if (ros::Time::now() >= lp.deadline) {
+            /* think how to implement new plan and sending of obstacles */
             cout << "Switching to state DONE" << endl;
             publish_twist(0, 0);
             lp.state = DONE;
@@ -316,6 +332,10 @@ void PathController::execute_callback(const planner::PlannerTargetGoal::ConstPtr
         srv.response.plan.points[0].x,
         srv.response.plan.points[0].y
     );
+    if (n_sections == 1) {
+        current_line_plan.ignore_target_theta = false;
+        current_line_plan.target_theta = msg->theta;
+    }
 
     /* Implement these next */
     bool replanning = false;
@@ -329,7 +349,7 @@ void PathController::execute_callback(const planner::PlannerTargetGoal::ConstPtr
             executing_plan = false;
             return;
         }
-        /* Switch instead when we have OBSTRUCTED? */
+        /* Switch instead when we have REPLANNING? */
         if (current_line_plan.state != DONE) {
             execute_plan(current_line_plan);
         } else {
@@ -375,13 +395,35 @@ void PathController::position_callback(const geometry_msgs::PoseStamped::ConstPt
     theta = yaw;
 }
 
+bool PathController::path_is_obstructed(const LinePlan &lp) {
+    float distance_to_target = euclidean(lp.target_x - x, lp.target_y - y);
+    for (const geometry_msgs::Point32 &p : scans) {
+        if (p.x < 0) continue;
+        if (euclidean(p.x / 1.5, p.y) < 0.15) { /* these constants are tricky */
+            if (p.x > distance_to_target + 0.15) continue;
+            return true;
+        }
+    }
+    return false;
+}
+
+void PathController::obstacles_callback(const geometry_msgs::Polygon::ConstPtr &msg) {
+    /* Abort current goal and replan */
+}
+
 int main(int argc, char **argv) {
     ros::init(argc, argv, "path_executor");
     ros::NodeHandle node_handle;
     PathController pc (node_handle);
     ros::Subscriber new_obstacles_subscriber = node_handle.subscribe(
+        "/obstacles",
+        5,
+        &PathController::obstacles_callback,
+        &pc
+    );
+    ros::Subscriber position_subscriber = node_handle.subscribe(
         "/position",
-        1,
+        5,
         &PathController::position_callback,
         &pc
     );
