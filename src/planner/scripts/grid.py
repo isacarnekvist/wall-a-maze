@@ -106,7 +106,7 @@ class OccupancyGrid:
         return g
         
         
-def lines_to_grid(lines, cell_width=0.03, padding=0.4):
+def lines_to_grid(lines, cell_width=0.02, padding=0.4):
     x_max = -np.inf
     x_min = np.inf
     y_max = -np.inf
