@@ -1,0 +1,6 @@
+# Request
+bool drop
+
+---
+# Response
+bool success
