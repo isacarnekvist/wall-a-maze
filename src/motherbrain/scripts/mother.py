@@ -10,8 +10,10 @@ import tf
 import rospy
 import numpy as np
 from std_msgs.msg import String
+from sensor_msgs.msg import Image
+from ras_msgs.msg import RAS_Evidence
 from planner.msg import PlannerTarget
-from geometry_msgs.msg import PoseStamped, PointStamped
+from geometry_msgs.msg import PoseStamped, PointStamped, TransformStamped
 from classifier.msg import Object as classifierObject
 from manipulation.msg import Manipulation
 
@@ -39,9 +41,10 @@ class DetectedObject:
 class Mother:
 
     def __init__(self):
-        self.planner = rospy.Publisher('planner', PlannerTarget, queue_size=1)
-        self.arm = rospy.Publisher('mother/manipulation', Manipulation, queue_size=1)
-        self.speaker = rospy.Publisher('espeak/string', String, queue_size=1)
+        self.planner = rospy.Publisher('planner', PlannerTarget, queue_size=10)
+        self.arm = rospy.Publisher('mother/manipulation', Manipulation, queue_size=10)
+        self.speaker = rospy.Publisher('espeak/string', String, queue_size=10)
+        self.evidence = rospy.Publisher('/evidence', RAS_Evidence, queue_size=10)
         self.x = None
         self.y = 0.0
         self.theta = 0.0
@@ -82,7 +85,23 @@ class Mother:
                 return
         # speak!
         self.speaker.publish('I see a {} {}'.format(data.color, data.type))
+        self.stop()
         
+        #RAS Evidence
+        image=rospy.client.wait_for_message('/camera/rgb/image_raw',Image)	
+        
+        evidence = RAS_Evidence()
+        evidence.group_number = 6
+        evidence. image_evidence = image
+        evidence.object_id = data.color + '_' + data.type 
+        
+        #Camera frame!!!!!!!
+        evidence.object_location.transform.translation.x = data.x
+        evidence.object_location.transform.translation.y = data.y
+        evidence.object_location.transform.translation.z = data.z
+        
+        self.evidence.publish(evidence)	
+
         manipObject = Manipulation()
         manipObject.pickupPos.point.x = data.x
         manipObject.pickupPos.point.y = data.y
@@ -91,7 +110,7 @@ class Mother:
         
         manipObject.job = 'carryout'
 
-        self.arm.publish(pickup)
+        #self.arm.publish(pickup)
         self.possible_objects.append(do)
         print('length of po:', len(self.possible_objects))
 
