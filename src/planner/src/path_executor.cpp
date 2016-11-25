@@ -4,6 +4,7 @@
 #include <tf/tf.h>
 #include <ros/ros.h>
 #include <nav_msgs/Path.h>
+#include <std_msgs/Bool.h>
 #include <geometry_msgs/Twist.h>
 #include <geometry_msgs/Point32.h>
 #include <sensor_msgs/LaserScan.h>
@@ -28,8 +29,8 @@ enum LINEPLAN_STATE {
     TARGET_ROTATION,
     BEFORE_DONE,
     DONE,
-    REPLANNING,
-    REPLANNING_DONE
+    OBSTRUCTED,
+    WAITING_REPLAN
 };
 
 typedef struct LinePlan {
@@ -85,18 +86,22 @@ public:
     ros::ServiceClient path_plan_client;
     ros::Publisher motor_publisher;
     ros::Publisher path_publisher;
+    ros::Publisher obstacle_points_publisher;
     PathController(ros::NodeHandle &node_handle);
     actionlib::SimpleActionServer<planner::PlannerTargetAction> server;
     LinePlan get_line_plan(float x, float y, float theta, bool ignore_theta);
     LinePlan get_line_plan(float x, float y) { return get_line_plan(x, y, 0.0, true); }
     float line_execution_speed(const LinePlan &lp);
     bool path_is_obstructed(const LinePlan &lp);
+    bool updated_map;
     vector<geometry_msgs::Point32> scans;
     bool executing_plan;
     void execute_callback(const planner::PlannerTargetGoal::ConstPtr &msg);
     void position_callback(const geometry_msgs::PoseStamped::ConstPtr &msg);
     void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg);
     void obstacles_callback(const geometry_msgs::Polygon::ConstPtr &msg);
+    void publish_seen_obstacles();
+    void map_updated_callback(const std_msgs::Bool::ConstPtr &msg);
     void publish_twist(float linear, float angular);
     void publish_path(const planner::PathPlan &srv, int current_section);
     void preempt_callback();
@@ -120,9 +125,11 @@ PathController::PathController(ros::NodeHandle &node_handle) :
     scans = vector<geometry_msgs::Point32>();
     motor_publisher = node_handle.advertise<geometry_msgs::Twist>("/motor_controller", 10);
     path_publisher = node_handle.advertise<nav_msgs::Path>("/path", 10);
+    obstacle_points_publisher = node_handle.advertise<geometry_msgs::Polygon>("/seen_obstacles", 10);
     path_plan_client = node_handle.serviceClient<planner::PathPlan>("path_plan");
     path_plan_client.waitForExistence();
     executing_plan = false;
+    updated_map = false;
     server.start();
     cout << "server started" << endl;
 }
@@ -235,8 +242,8 @@ void PathController::execute_plan(LinePlan &lp) {
         if (path_is_obstructed(lp)) {
             lp.deadline = ros::Time::now() + ros::Duration(3.0);
             publish_twist(0, 0);
-            cout << "Switching to state REPLANNING" << endl;
-            lp.state = REPLANNING;
+            cout << "Switching to state OBSTRUCTED" << endl;
+            lp.state = OBSTRUCTED;
             break;
         }
         forward_speed = line_execution_speed(lp);
@@ -282,13 +289,16 @@ void PathController::execute_plan(LinePlan &lp) {
             lp.state = DONE;
         }
         break;
-    case REPLANNING:
+    case OBSTRUCTED:
         if (ros::Time::now() >= lp.deadline) {
-            /* think how to implement new plan and sending of obstacles */
-            cout << "Switching to state DONE" << endl;
-            publish_twist(0, 0);
-            lp.state = DONE;
+            /* send obstacles to map */
+            publish_seen_obstacles();
+            cout << "Switching to state WAITING_REPLAN" << endl;
+            lp.state = WAITING_REPLAN;
         }
+        break;
+    case WAITING_REPLAN:
+        /* Do nothing! */
         break;
     default:
         cerr << "REACHED UNDEFINED STATE IN PLANNER" << endl;
@@ -342,6 +352,13 @@ void PathController::execute_callback(const planner::PlannerTargetGoal::ConstPtr
     bool replanning_sleep = 0.0;
 
     while (ros::ok()) {
+        if (updated_map) {
+            updated_map = false;
+            publish_twist(0.0, 0.0);
+            executing_plan = false;
+            execute_callback(msg);
+            return;
+        }
         if (server.isPreemptRequested()) {
             cout << "was preempted" << endl;
             stop_motors();
@@ -349,7 +366,7 @@ void PathController::execute_callback(const planner::PlannerTargetGoal::ConstPtr
             executing_plan = false;
             return;
         }
-        /* Switch instead when we have REPLANNING? */
+        /* Switch instead when we have OBSTRUCTED? */
         if (current_line_plan.state != DONE) {
             execute_plan(current_line_plan);
         } else {
@@ -395,30 +412,43 @@ void PathController::position_callback(const geometry_msgs::PoseStamped::ConstPt
     theta = yaw;
 }
 
+void PathController::map_updated_callback(const std_msgs::Bool::ConstPtr &msg) {
+    cout << "Map was updated" << endl;
+    updated_map = true;
+}
+
 bool PathController::path_is_obstructed(const LinePlan &lp) {
     float distance_to_target = euclidean(lp.target_x - x, lp.target_y - y);
     for (const geometry_msgs::Point32 &p : scans) {
         if (p.x < 0) continue;
-        if (euclidean(p.x / 1.5, p.y) < 0.15) { /* these constants are tricky */
-            if (p.x > distance_to_target + 0.15) continue;
+        if (euclidean(p.x / 1.5, p.y) < 0.13) { /* these constants are tricky */
+            if (p.x > distance_to_target + 0.13) continue;
             return true;
         }
     }
     return false;
 }
 
-void PathController::obstacles_callback(const geometry_msgs::Polygon::ConstPtr &msg) {
-    /* Abort current goal and replan */
+void PathController::publish_seen_obstacles() {
+    geometry_msgs::Polygon msg;
+    for (const geometry_msgs::Point32 &p : scans) {
+        if (p.x < 0) continue;
+        geometry_msgs::Point32 map_point;
+        map_point.x = p.x * cos(theta) - p.y * sin(theta) + x;
+        map_point.y = p.x * sin(theta) + p.y * cos(theta) + y;
+        msg.points.push_back(map_point);
+    }
+    obstacle_points_publisher.publish(msg);
 }
 
 int main(int argc, char **argv) {
     ros::init(argc, argv, "path_executor");
     ros::NodeHandle node_handle;
     PathController pc (node_handle);
-    ros::Subscriber new_obstacles_subscriber = node_handle.subscribe(
-        "/obstacles",
+    ros::Subscriber map_updated_subscriber = node_handle.subscribe(
+        "/map_updated",
         5,
-        &PathController::obstacles_callback,
+        &PathController::map_updated_callback,
         &pc
     );
     ros::Subscriber position_subscriber = node_handle.subscribe(

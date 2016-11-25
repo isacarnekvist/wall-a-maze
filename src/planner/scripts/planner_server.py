@@ -12,6 +12,7 @@ import numpy as np
 from time import sleep
 from math import atan2
 from planner.srv import PlannerStatus, PathPlan
+from std_msgs.msg import Bool
 from nav_msgs.msg import OccupancyGrid, Path
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Polygon, PoseStamped, Twist, Point32
@@ -43,6 +44,7 @@ class Planner:
         self.wheels = rospy.Publisher('motor_controller', Twist, queue_size=10)
         self.grid_publisher = rospy.Publisher('occupancy_grid', OccupancyGrid, queue_size=10)
         self.new_obstacle_publisher = rospy.Publisher('seen_obstacles', Polygon, queue_size=10)
+        self.map_updated_publisher = rospy.Publisher('map_updated', Bool, queue_size=10)
         print('Started planner server')
 
 
@@ -69,9 +71,10 @@ class Planner:
             p2 = data.points[2 * i + 1]
             lines.append((p1.x, p1.y, p2.x, p2.y))
         self.grid = lines_to_grid(lines)
-        self.grid.expand_obstacles(0.21)
+        self.grid.expand_obstacles(0.19)
         self.graph = self.grid.to_graph()
         self.updated_obstacles = True
+        self.map_updated_publisher.publish(True)
 
     def position_callback(self, data):
         self.x = data.pose.position.x
