@@ -19,10 +19,7 @@
 namespace PointCloudHelper {
     void HSVFilter(pcl_rgb::Ptr & cloud_in, pcl_rgb::Ptr & cloud_out, hsvColor color) {
         pcl::PointIndices::Ptr indices (new pcl::PointIndices());
-        HSVFilter(cloud_in, cloud_out, color, indices);
-    }
 
-    void HSVFilter(pcl_rgb::Ptr & cloud_in, pcl_rgb::Ptr & cloud_out, hsvColor color, pcl::PointIndices::Ptr & indices) {
         for (size_t i = 0; i < cloud_in->points.size(); i++) {
             pcl::PointXYZHSV hsv_point;
             pcl::PointXYZRGBtoXYZHSV(cloud_in->points[i], hsv_point);
@@ -34,10 +31,17 @@ namespace PointCloudHelper {
 
         pcl::ExtractIndices<pcl::PointXYZRGB> extract;
 
+        // Cloud out will only contain the colored points
         extract.setInputCloud(cloud_in);
         extract.setIndices(indices);
         extract.setNegative(false);
         extract.filter(*cloud_out);
+
+        // Remove the colored points from cloud in
+        extract.setInputCloud(cloud_in);
+        extract.setIndices(indices);
+        extract.setNegative(true);
+        extract.filter(*cloud_in);
     }
 
     void removeOutliers(pcl_rgb::Ptr & cloud_in, pcl_rgb::Ptr & cloud_out, int numNeighbours, double stddev) {
@@ -81,28 +85,21 @@ namespace PointCloudHelper {
         voxel_filter.filter (*cloud_out);
     }
 
-    void resizePoints(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud_in, pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud_out, double xSize, double ySize, double zSize) {
-        pcl::VoxelGrid<pcl::PointXYZ> voxel_filter;
+    void resizePoints(pcl_rgb::Ptr & cloud_in, pcl_rgb::Ptr & cloud_out, double xSize, double ySize, double zSize) {
+        pcl::VoxelGrid<pcl::PointXYZRGB> voxel_filter;
         voxel_filter.setLeafSize (xSize, ySize, zSize); //(0.25, 0.25, 0.25);
         voxel_filter.setInputCloud (cloud_in);
         voxel_filter.filter (*cloud_out);
     }
 
     std::vector<pcl_rgb::Ptr> getObjects(pcl_rgb::Ptr & cloud_in, hsvColor color, int outlierMaxNeighbours, double outlierStddev, double clusterTolerance, double minClusterSize, double maxClusterSize) {
-        pcl::PointIndices::Ptr indices (new pcl::PointIndices());
-        return getObjects(cloud_in, color, indices, outlierMaxNeighbours, outlierStddev, clusterTolerance, minClusterSize, maxClusterSize);
-    }
-
-    std::vector<pcl_rgb::Ptr> getObjects(pcl_rgb::Ptr & cloud_in, hsvColor color, pcl::PointIndices::Ptr & indices, int outlierMaxNeighbours, double outlierStddev, double clusterTolerance, double minClusterSize, double maxClusterSize) {
         std::vector<pcl_rgb::Ptr> objects;
 
         pcl_rgb::Ptr filtered_cloud (new pcl_rgb);
 
         // Filter on color
         //std::cout << "Filter on color" << std::endl;
-        pcl::PointIndices::Ptr hsv_indices (new pcl::PointIndices());
-        PointCloudHelper::HSVFilter(cloud_in, filtered_cloud, color, hsv_indices);
-        indices->indices.insert(indices->indices.end(), hsv_indices->indices.begin(), hsv_indices->indices.end());
+        PointCloudHelper::HSVFilter(cloud_in, filtered_cloud, color);
 
         // Remove NaNs
         //std::cout << "Remove NaNs from cloud" << std::endl;

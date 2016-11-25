@@ -68,6 +68,7 @@ add_message_files(
 add_service_files(
   FILES
   Classify.srv
+  Find_Object.srv
 )
 
 ## Generate actions in the 'action' folder
