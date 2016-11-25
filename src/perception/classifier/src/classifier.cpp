@@ -155,7 +155,7 @@ bool loadFileList (std::vector<vfh_model> &models) {
   return (true);
 }
 
-void nearestKSearch (flann::Index<flann::ChiSquareDistance<float> > &index, const vfh_model &model,
+void nearestKSearch (flann::Index<flann::L1<float> > &index, const vfh_model &model,
                 int k, flann::Matrix<int> &indices, flann::Matrix<float> &distances) {
   // Query point
   flann::Matrix<float> p = flann::Matrix<float>(new float[model.second.size ()], 1, model.second.size ());
@@ -228,7 +228,7 @@ void classify(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud, std::vector<std::pair
 
 
 
-    flann::Index<flann::ChiSquareDistance<float> > index (data, flann::SavedIndexParams(training_dir + "/kdtree.idx"));
+    flann::Index<flann::L1<float> > index (data, flann::SavedIndexParams(training_dir + "/kdtree.idx"));
     index.buildIndex();
     k = index.size(); // TODO: is this good?!
     nearestKSearch(index, histogram, k, k_indices, k_distances);
@@ -330,7 +330,7 @@ classifier::Object getOptimalPickupPoint(pcl_rgb::Ptr & cloud_in) {
     return point;
 }
 
-void findObjects(pcl::PointCloud<pcl::PointXYZRGB>::Ptr & input_cloud, std::vector<foundObject> & foundObjects) {
+void findObjects(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr & input_cloud, std::vector<foundObject> & foundObjects) {
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr filtered_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
 
     PointCloudHelper::resizePoints(input_cloud, filtered_cloud, pointSize[0], pointSize[1], pointSize[2]);
@@ -365,12 +365,7 @@ void findObjects(pcl::PointCloud<pcl::PointXYZRGB>::Ptr & input_cloud, std::vect
     std::vector<std::string> detectedObjects;
     // Find the color objects
     for (int i = 0; i < colors.size(); i++) {
-        pcl::PointCloud<pcl::PointXYZRGB>::Ptr color_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
-
-        *color_cloud = *filtered_cloud;
-
-        pcl::PointIndices::Ptr indices (new pcl::PointIndices());
-        std::vector<pcl_rgb::Ptr> objects = PointCloudHelper::getObjects(color_cloud, colors[i], indices, outlierMaxNeighbours, outlierStddev, clusterTolerance, minClusterSize, maxClusterSize);
+        std::vector<pcl_rgb::Ptr> objects = PointCloudHelper::getObjects(filtered_cloud, colors[i], outlierMaxNeighbours, outlierStddev, clusterTolerance, minClusterSize, maxClusterSize);
 
         for (size_t j = 0; j < objects.size(); j++) {
             // Classify
@@ -404,7 +399,7 @@ void findObjects(pcl::PointCloud<pcl::PointXYZRGB>::Ptr & input_cloud, std::vect
 bool classifyService(classifier::Find_Object::Request & req, classifier::Find_Object::Response & res) {
     // Check if there is a point cloud included
     if (req.cloud.data.size() == 0) {
-        sensor_msgs::PointCloud2ConstPtr msg = ros::topic::waitForMessage<sensor_msgs::PointCloud2>("camera/depth_registered/points", ros::Duration(10));
+        sensor_msgs::PointCloud2ConstPtr msg = ros::topic::waitForMessage<sensor_msgs::PointCloud2>("camera/depth_registered/points", ros::Duration(0.3));
 
         if (msg == NULL) {
             return false;
@@ -479,7 +474,6 @@ bool classifyService(classifier::Find_Object::Request & req, classifier::Find_Ob
 
 
 void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input_cloud) {
-    cloudNum++; // New cloud (mainly used for testing)
     // Filtering input scan to increase speed of registration.
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr filtered_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
 
@@ -515,12 +509,7 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
     std::vector<std::string> detectedObjects;
     // Find the color objects
     for (int i = 0; i < colors.size(); i++) {
-        pcl::PointCloud<pcl::PointXYZRGB>::Ptr color_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
-
-        *color_cloud = *filtered_cloud;
-
-        pcl::PointIndices::Ptr indices (new pcl::PointIndices());
-        std::vector<pcl_rgb::Ptr> objects = PointCloudHelper::getObjects(color_cloud, colors[i], indices, outlierMaxNeighbours, outlierStddev, clusterTolerance, minClusterSize, maxClusterSize);
+        std::vector<pcl_rgb::Ptr> objects = PointCloudHelper::getObjects(filtered_cloud, colors[i], outlierMaxNeighbours, outlierStddev, clusterTolerance, minClusterSize, maxClusterSize);
 
         for (size_t j = 0; j < objects.size(); j++) {
             // Classify

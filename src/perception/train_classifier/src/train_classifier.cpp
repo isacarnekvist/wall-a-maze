@@ -91,25 +91,27 @@ void loadVFHModels(std::vector<vfh_model> & models) {
             pcl::PointCloud<pcl::VFHSignature308> point;
             pcl::io::loadPCDFile (dir, point);
 
-            vfh_model vfh;
-            vfh.second.resize(308);
-
             std::vector<pcl::PCLPointField> fields;
             pcl::getFieldIndex(point, "vhf", fields);
 
-            for (size_t k = 0; k < fields[pcl::getFieldIndex(cloud, "vfh")].count; k++) {
-                vfh.second[k] = point.points[0].histogram[k];
-            }
-            vfh.first = objects[i]; // Maybe something else so we know the pose?
+            for (size_t l = 0; l < point.points.size(); l++) {
+                vfh_model vfh;
+                vfh.second.resize(308);
 
-            models.push_back(vfh);
+                for (size_t k = 0; k < fields[pcl::getFieldIndex(cloud, "vfh")].count; k++) {
+                    vfh.second[k] = point.points[l].histogram[k];
+                }
+                vfh.first = objects[i]; // Maybe something else so we know the pose?
+
+                models.push_back(vfh);
+            }
 
             j++;
         }
     }
 }
 
-void loadViews(std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> & views, std::string object) {
+void loadViews(std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> & views, std::string object) {
     boost::filesystem::path p(views_dir + "/" + object);
 
     for (boost::filesystem::directory_iterator i = boost::filesystem::directory_iterator(p); i != boost::filesystem::directory_iterator(); i++) {
@@ -117,9 +119,9 @@ void loadViews(std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> & views, std::st
             std::string fileName = i->path().filename().string();
 
             if (fileName.find(view_extension) != std::string::npos) {
-                pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>);
+                pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
 
-                pcl::io::loadPCDFile<pcl::PointXYZ>(views_dir + "/" + object + "/" + fileName, *cloud);
+                pcl::io::loadPCDFile<pcl::PointXYZRGB>(views_dir + "/" + object + "/" + fileName, *cloud);
 
                 views.push_back(cloud);
             }
@@ -136,7 +138,7 @@ void train() {
         boost::filesystem::remove_all(dir); // Remove first so we can add new!
         boost::filesystem::create_directories(dir);
 
-        std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> views;
+        std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> views;
 
         loadViews(views, objects[i]);
 
@@ -147,7 +149,15 @@ void train() {
 
             PointCloudHelper::resizePoints(views[j], views[j], pointSize[0], pointSize[1], pointSize[2]);
 
-            VFHHelper::computeVFHSignature(vfhs, views[j], normalRadiusSearch, normalizeBins, EPSAngle, maxCurv);
+            pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_xyz (new pcl::PointCloud<pcl::PointXYZ>);
+            cloud_xyz->points.resize(views[j]->size());
+            for (size_t p = 0; p < cloud_xyz->points.size(); p++) {
+                cloud_xyz->points[p].x = views[j]->points[p].x;
+                cloud_xyz->points[p].y = views[j]->points[p].y;
+                cloud_xyz->points[p].z = views[j]->points[p].z;
+            }
+
+            VFHHelper::computeVFHSignature(vfhs, cloud_xyz, normalRadiusSearch, normalizeBins, EPSAngle, maxCurv);
 
             // Save VFH signature to file
             // TODO: Maybe save pose too?!

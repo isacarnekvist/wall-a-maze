@@ -2,8 +2,7 @@
 translation: { x: 0.105, y: 0.0, z: 0.145 }
 rotation: { yaw: 0.0, roll: 35.0, pitch: 3.0 }
 
-color_names: [ 'red' ]
-#, 'blue', 'green', 'orange', 'purple' ]
+color_names: [ 'red', 'blue', 'green', 'orange', 'purple' ]
 # , 'yellow',  ]
 red_hsv: { h_min: 0.0, h_max: 15.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
 
@@ -39,8 +38,8 @@ maxClusterSize: 25000
 pointSize: [ 0.003, 0.003, 0.003 ]
 
 # Classifier limits
-lowCertaintyLimit: 90.0 
-highCertaintyLimit: 90.0
+lowCertaintyLimit: 200.0 
+highCertaintyLimit: 200.0
 
 # 'CAD' or 'Real'
 whatTypeOfData: 'Real'
