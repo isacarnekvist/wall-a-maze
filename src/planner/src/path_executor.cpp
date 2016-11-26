@@ -91,7 +91,7 @@ public:
     actionlib::SimpleActionServer<planner::PlannerTargetAction> server;
     LinePlan get_line_plan(float x, float y, float theta, bool ignore_theta);
     LinePlan get_line_plan(float x, float y) { return get_line_plan(x, y, 0.0, true); }
-    float line_execution_speed(const LinePlan &lp);
+    bool line_control(const LinePlan &lp);
     bool path_is_obstructed(const LinePlan &lp);
     bool updated_map;
     vector<geometry_msgs::Point32> scans;
@@ -174,38 +174,44 @@ LinePlan PathController::get_line_plan(float target_x, float target_y, float tar
 }
 
 const static float MAX_LINEAR_SPEED = 0.20;
-float PathController::line_execution_speed(const LinePlan &lp) {
+bool PathController::line_control(const LinePlan &lp) {
     /* Have we travelled far enough? */
-    if (euclidean(lp.start_x - lp.target_x, lp.start_y - lp.target_y) - 0.02 <= euclidean(lp.start_x - x, lp.start_y - y)) {
-        return -1;
+    if (euclidean(lp.start_x - lp.target_x, lp.start_y - lp.target_y) <= euclidean(lp.start_x - x, lp.start_y - y)) {
+        return true;
     }
-    float angle_error_factor = max(0.5, pow(1 - abs(closest_theta_adjustment(theta, atan2(lp.target_y - y, lp.target_x - x))) / M_PI, 4));
-    const static float CLOSEST_MAX = 0.3;
-    float closest_point = CLOSEST_MAX;
-    for (const geometry_msgs::Point32 &p : scans) {
-        /* Finding closest point in this area:
-         *
-         * xxxxxx   xxxxxx
-         * xxxxxx ^ xxxxxx    x
-         * xxxxxx | xxxxxx    ^
-         * xxx o-----o xxx    |
-         *     |WALL-|        |
-         *     +  E  +        |
-         *
-         */
-        if (p.x < 0) continue;
-        if (abs(p.y) < 0.1) continue;
-        closest_point = min(closest_point, euclidean(p.x, p.y));
-    }
-    float closeness_factor = 1 - (CLOSEST_MAX - closest_point) / CLOSEST_MAX;
-    return MAX_LINEAR_SPEED * angle_error_factor * closeness_factor;
+    float distance_to_target = euclidean(lp.target_x - x, lp.target_y - y);
+    float target_close_factor = 1.8 / (1 + exp(-12 * distance_to_target)) - 0.8;
+    cout << "close factor: " << target_close_factor << endl;
+    float sinus_error = sin(closest_theta_adjustment(theta, atan2(lp.target_y - y, lp.target_x - x))) * distance_to_target;
+    // const static float CLOSEST_MAX = 0.3;
+    // float closest_point = CLOSEST_MAX;
+    // for (const geometry_msgs::Point32 &p : scans) {
+    //     /* Finding closest point in this area:
+    //      *
+    //      * xxxxxx   xxxxxx
+    //      * xxxxxx ^ xxxxxx    x
+    //      * xxxxxx | xxxxxx    ^
+    //      * xxx o-----o xxx    |
+    //      *     |WALL-|        |
+    //      *     +  E  +        |
+    //      *
+    //      */
+    //     if (p.x < 0) continue;
+    //     if (abs(p.y) < 0.1) continue;
+    //     closest_point = min(closest_point, euclidean(p.x, p.y));
+    // }
+    // float closeness_factor = 1 - (CLOSEST_MAX - closest_point) / CLOSEST_MAX;
+    // return MAX_LINEAR_SPEED * angle_error_factor * closeness_factor;
+    cout << "sinus error: " << sinus_error << endl;
+    publish_twist(0.2 * target_close_factor, -0.2 * sinus_error);
+    return false;
 }
 
 void PathController::execute_plan(LinePlan &lp) {
     float theta_correction;
     const static float INITIAL_ROTATION_SPEED = 0.8;
     float time_needed;
-    float forward_speed;
+    bool target_reached;
     switch (lp.state) {
     case INITIALIZED:
         theta_correction = closest_theta_adjustment(theta, atan2(lp.target_y - y, lp.target_x - x));
@@ -246,12 +252,8 @@ void PathController::execute_plan(LinePlan &lp) {
             lp.state = OBSTRUCTED;
             break;
         }
-        forward_speed = line_execution_speed(lp);
-        theta_correction = closest_theta_adjustment(theta, atan2(lp.target_y - y, lp.target_x - x));
-        if (forward_speed > 0) {
-            publish_twist(forward_speed, 0.1 * theta_correction);
-            //publish_twist(forward_speed, min(0.6 * theta_correction, sign(theta_correction) * 0.8));
-        } else {
+        target_reached = line_control(lp);
+        if (target_reached) {
             lp.deadline = ros::Time::now() + ros::Duration(0.5);
             publish_twist(0, 0);
             if (lp.ignore_target_theta) {
@@ -418,11 +420,12 @@ void PathController::map_updated_callback(const std_msgs::Bool::ConstPtr &msg) {
 }
 
 bool PathController::path_is_obstructed(const LinePlan &lp) {
+    return false;
     float distance_to_target = euclidean(lp.target_x - x, lp.target_y - y);
     for (const geometry_msgs::Point32 &p : scans) {
         if (p.x < 0) continue;
-        if (euclidean(p.x / 1.5, p.y) < 0.13) { /* these constants are tricky */
-            if (p.x > distance_to_target + 0.13) continue;
+        if (euclidean(p.x / 1.5, p.y) < 0.16) { /* these constants are tricky */
+            if (p.x > distance_to_target + 0.16) continue;
             return true;
         }
     }
