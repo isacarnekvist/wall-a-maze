@@ -179,31 +179,29 @@ bool PathController::line_control(const LinePlan &lp) {
     if (euclidean(lp.start_x - lp.target_x, lp.start_y - lp.target_y) <= euclidean(lp.start_x - x, lp.start_y - y)) {
         return true;
     }
+    
+    /* Adjust for angle errors */
     float distance_to_target = euclidean(lp.target_x - x, lp.target_y - y);
     float target_close_factor = 1.8 / (1 + exp(-12 * distance_to_target)) - 0.8;
-    cout << "close factor: " << target_close_factor << endl;
-    float sinus_error = sin(closest_theta_adjustment(theta, atan2(lp.target_y - y, lp.target_x - x))) * distance_to_target;
-    // const static float CLOSEST_MAX = 0.3;
-    // float closest_point = CLOSEST_MAX;
-    // for (const geometry_msgs::Point32 &p : scans) {
-    //     /* Finding closest point in this area:
-    //      *
-    //      * xxxxxx   xxxxxx
-    //      * xxxxxx ^ xxxxxx    x
-    //      * xxxxxx | xxxxxx    ^
-    //      * xxx o-----o xxx    |
-    //      *     |WALL-|        |
-    //      *     +  E  +        |
-    //      *
-    //      */
-    //     if (p.x < 0) continue;
-    //     if (abs(p.y) < 0.1) continue;
-    //     closest_point = min(closest_point, euclidean(p.x, p.y));
-    // }
-    // float closeness_factor = 1 - (CLOSEST_MAX - closest_point) / CLOSEST_MAX;
-    // return MAX_LINEAR_SPEED * angle_error_factor * closeness_factor;
-    cout << "sinus error: " << sinus_error << endl;
-    publish_twist(0.2 * target_close_factor, -0.2 * sinus_error);
+    float theta_error = closest_theta_adjustment(theta, atan2(lp.target_y - y, lp.target_x - x));
+    float sinus_error = sin(theta_error) * distance_to_target;
+
+    /* Adjust for closeness to walls */
+    float left_min = INF;
+    float right_min = INF;
+    for (const geometry_msgs::Point32 &p : scans) {
+        if (p.x < 0.0 || p.x > 0.25) continue;
+        if (p.y < 0) {
+            right_min = min(right_min, -p.y);
+        } else {
+            left_min = min(left_min, p.y);
+        }
+    }
+    float side_k = 12.0;
+    float left_factor = 2 - 2 / (1 + exp(-side_k * left_min));
+    float right_factor = 2 - 2 / (1 + exp(-side_k * right_min));
+    cout << left_factor << ", " << right_factor << endl;
+    publish_twist(0.2 * target_close_factor, 0.8 * sinus_error + 0.3 * theta_error + right_factor - left_factor);
     return false;
 }
 
