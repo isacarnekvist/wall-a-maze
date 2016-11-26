@@ -71,7 +71,7 @@ class Planner:
             p2 = data.points[2 * i + 1]
             lines.append((p1.x, p1.y, p2.x, p2.y))
         self.grid = lines_to_grid(lines)
-        self.grid.expand_obstacles(0.19)
+        self.grid.expand_obstacles(0.20)
         self.graph = self.grid.to_graph()
         self.updated_obstacles = True
         self.map_updated_publisher.publish(True)
