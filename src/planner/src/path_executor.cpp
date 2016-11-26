@@ -182,26 +182,34 @@ bool PathController::line_control(const LinePlan &lp) {
     
     /* Adjust for angle errors */
     float distance_to_target = euclidean(lp.target_x - x, lp.target_y - y);
-    float target_close_factor = 1.8 / (1 + exp(-12 * distance_to_target)) - 0.8;
+    float target_close_factor = 1.8 / (1 + exp(-12 * distance_to_target)) - 1.0;
     float theta_error = closest_theta_adjustment(theta, atan2(lp.target_y - y, lp.target_x - x));
     float sinus_error = sin(theta_error) * distance_to_target;
 
     /* Adjust for closeness to walls */
     float left_min = INF;
     float right_min = INF;
+    float closest_front = INF;
     for (const geometry_msgs::Point32 &p : scans) {
-        if (p.x < 0.0 || p.x > 0.25) continue;
-        if (p.y < 0) {
-            right_min = min(right_min, -p.y);
-        } else {
-            left_min = min(left_min, p.y);
+        if (abs(p.y) < 0.1 && p.x > 0.0) {
+            closest_front = min(closest_front, p.x);
+        }
+        if (p.x > 0.0 && p.x < 0.25) {
+            if (p.y < 0) {
+                right_min = min(right_min, -p.y);
+            } else {
+                left_min = min(left_min, p.y);
+            }
         }
     }
     float side_k = 12.0;
     float left_factor = 2 - 2 / (1 + exp(-side_k * left_min));
     float right_factor = 2 - 2 / (1 + exp(-side_k * right_min));
-    cout << left_factor << ", " << right_factor << endl;
-    publish_twist(0.2 * target_close_factor, 0.8 * sinus_error + 0.3 * theta_error + right_factor - left_factor);
+    float front_factor = 2 / (1 + exp(-6 * closest_front)) - 1;
+    publish_twist(
+        0.2 * target_close_factor * front_factor,
+        0.8 * sinus_error + 0.3 * theta_error + right_factor - left_factor
+    );
     return false;
 }
 
@@ -222,7 +230,7 @@ void PathController::execute_plan(LinePlan &lp) {
     case INITIAL_ROTATION:
         if (ros::Time::now() >= lp.deadline) {
             publish_twist(0, 0);
-            lp.deadline = ros::Time::now() + ros::Duration(1.0);
+            lp.deadline = ros::Time::now() + ros::Duration(0.8);
             cout << "Switching to state BEFORE_LINE_EXECUTION" << endl;
             lp.state = BEFORE_LINE_EXECUTION;
         }
@@ -422,8 +430,7 @@ bool PathController::path_is_obstructed(const LinePlan &lp) {
     float distance_to_target = euclidean(lp.target_x - x, lp.target_y - y);
     for (const geometry_msgs::Point32 &p : scans) {
         if (p.x < 0) continue;
-        if (euclidean(p.x / 1.5, p.y) < 0.16) { /* these constants are tricky */
-            if (p.x > distance_to_target + 0.16) continue;
+        if (abs(p.y) < 0.13 && p.x > 0.0 && p.x < 0.165) {
             return true;
         }
     }
