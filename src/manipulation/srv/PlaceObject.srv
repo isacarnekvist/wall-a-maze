@@ -4,4 +4,4 @@ geometry_msgs/PointStamped position # Desired drop position wheel_center
 
 ---
 # Response
-std_msgs/Bool success
+bool success

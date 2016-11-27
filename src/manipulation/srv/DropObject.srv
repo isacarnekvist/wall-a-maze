@@ -1,6 +1,6 @@
 # Request
-std_msgs/Bool drop
+bool drop
 
 ---
 # Response
-std_msgs/Bool success
+bool success

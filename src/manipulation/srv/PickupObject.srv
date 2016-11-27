@@ -1,8 +1,8 @@
 # Request
 geometry_msgs/PointStamped position # Object position -- should be wheel_frame
-std_msgs/String color	# Maybe not needed
-std_msgs/String type
+string color	# Maybe not needed
+string type
 
 ---
 # Response
-std_msgs/Bool success
+bool success

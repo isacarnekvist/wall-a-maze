@@ -4,4 +4,4 @@ geometry_msgs/PointStamped position # Desired movement position
 
 ---
 # Response
-std_msgs/Bool success
+bool success

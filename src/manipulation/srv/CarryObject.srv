@@ -1,7 +1,7 @@
 # Request
-std_msgs/Bool carry
-std_msgs/String type # carry trap and object differently
+bool carry
+string type # carry trap and object differently
 
 ---
 # Response
-std_msgs/Bool success
+bool success

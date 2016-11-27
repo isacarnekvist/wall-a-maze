@@ -16,7 +16,7 @@ def robot_to_uarm():
         # Z is how much the arm is translated upwards 
         # OLD VALUES for old uarm python, ARM TILTED NOW 90 degree anti clockwise (-0.105,0.086,-0.051), #0.0), #0.051
         # NEW VALUES from guessing and assuming base fram uarm at center of ground rotation and height minus 2cm 
-		(-0.01,0.01,0.11),
+		(-0.01,0.01,0.10),
         # OLD tf.transformations.quaternion_from_euler(0, 0, 4.5 * pi / 180.0),
 		#tf.transformations.quaternion_from_euler(0, 0, -85.5 * pi / 180.0),
 		tf.transformations.quaternion_from_euler(0, 0, -96.0 * pi / 180.0),
