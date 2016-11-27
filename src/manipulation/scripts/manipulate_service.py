@@ -54,12 +54,10 @@ class Manipulate():
 				
 		# Define move parameters 
 		self.move_mode = 0	# (0 absolute,1 realtive)
-		self.moveDuration_abs = rospy.Duration(2.0) # (in s)
+		self.moveDuration_abs = rospy.Duration(1.0) # (in s)
 		self.moveDuration_rel = rospy.Duration(0.2)
 		
-		self.interpol_none = 0
-		self.interpol_cubic = 1
-		self.interpol_linear = 2
+		self.interpol_way = 2 	# (0:none,1:cubic,2:linear)
 		self.check_limits = True
 		self.eef_orientation = 0
 		self.ignore_orientation = True
@@ -68,7 +66,8 @@ class Manipulate():
 		# Initial EEF position
 		self.initPos_arm = Point(1.0, 12.0, 14.0)	# in arm frame	
 		self.carryOutPos_arm = Point(1.0, 14.0, 16.0)
-		
+		self.dropPos = Point(0.0, 24.0, 0.0)
+
 		self.toInitPos()
 
 		# Services
@@ -83,7 +82,7 @@ class Manipulate():
 	
 	
 	def toInitPos(self):
-		initial_state = self.moveToPos_client(self.initPos_arm, self.move_mode, self.moveDuration_abs, self.interpol_linear) 
+		initial_state = self.moveToPos_client(self.initPos_arm, self.move_mode, self.moveDuration_abs, self.interpol_way) 
 			
 
 	def handle_pickup(self,request):
@@ -107,7 +106,7 @@ class Manipulate():
 		placePos_arm.z = placePos_arm.z*scale
 
 		# Place object
-		place_state = self.moveToPos_client(placePos_arm, self.move_mode, self.moveDuration_abs, self.interpol_linear)
+		place_state = self.moveToPos_client(placePos_arm, self.move_mode, self.moveDuration_abs, self.interpol_way)
 		
 		if place_state.error == False:	# Maybe add control to place it savely
 			self.pump_control(False)
@@ -119,17 +118,13 @@ class Manipulate():
 
 
 	def handle_carryObject(self,request):
-		carryOut_state = self.moveToPos_client(self.carryOutPos_arm, self.move_mode, self.moveDuration_abs, self.interpol_linear)		
+		carryOut_state = self.moveToPos_client(self.carryOutPos_arm, self.move_mode, self.moveDuration_abs, self.interpol_way)		
 		if carryOut_state.error == False:
 			return CarryObjectResponse(True)
 
 
 	def handle_drop(self,request):
-		# Drop object when asked so by mother a few centimeters in front of the robot
-		dropPos = self.carryOutPos_arm
-		dropPos.y = dropPos.y + 10.0
-
-		drop_state = self.moveToPos_client(dropPos, self.move_mode, self.moveDuration_abs, self.interpol_linear)
+		drop_state = self.moveToPos_client(self.dropPos, self.move_mode, self.moveDuration_abs, self.interpol_way)
 		if drop_state.error == True:
 			return DropObjectResponse(False)
 		else:
@@ -206,7 +201,7 @@ class Manipulate():
 
 		#print("Manipulation moves robot!")
 
-		yTol = 0.01
+		yTol = 0.02
 		xTol = 0.10
 		xAim = 0.26
 		
@@ -307,7 +302,7 @@ class Manipulate():
 				
 	def pickup(self,request):
 		num_tries = 0
-		max_tries = 5
+		max_tries = 3
 		zTol = 0.03	# [m]
 
 		# ToDo: Add multiple probing, but see first how behaves when multiple times going down!
@@ -336,7 +331,7 @@ class Manipulate():
 
 				aboveGoal_pos = Point(pickupPos_arm.x, pickupPos_arm.y, pickupPos_arm.z + 4.0) #correct 6, include in param file	
 			
-				aboveGoal_state = self.moveToPos_client(aboveGoal_pos, self.move_mode, self.moveDuration_abs, self.interpol_linear)
+				aboveGoal_state = self.moveToPos_client(aboveGoal_pos, self.move_mode, self.moveDuration_abs, self.interpol_way)
 				if aboveGoal_state.error == True:
 					return False
 					break
@@ -345,12 +340,14 @@ class Manipulate():
 				
 				# Correct position above robot
 				pickupPos_high_new = self.absoluteFromDifference(aboveGoal_pos, aboveGoal_state.position)
-				aboveGoal_state = self.moveToPos_client(pickupPos_high_new, self.move_mode, self.moveDuration_abs, self.interpol_linear)
+
+				'''
+				aboveGoal_state = self.moveToPos_client(pickupPos_high_new, self.move_mode, self.moveDuration_abs, self.interpol_way)
 
 				if aboveGoal_state.error == True:
 					return False					
 					break
-					
+				'''	
 				
 				# Modify goal pos to go to lower z
 				pickupPos_arm_low = pickupPos_high_new
@@ -360,7 +357,7 @@ class Manipulate():
 				self.pump_control(True)
 				
 				# Move down with corrected x,y
-				atGoal_state = self.moveToPos_client(pickupPos_arm_low,self.move_mode, self.moveDuration_abs, self.interpol_linear)
+				atGoal_state = self.moveToPos_client(pickupPos_arm_low,self.move_mode, self.moveDuration_abs, self.interpol_way)
 				if atGoal_state.error == True:
 					self.pump_control(False)
 					return False					
@@ -368,7 +365,7 @@ class Manipulate():
 
 				# Move back up
 				aboveGoal_pos.z = aboveGoal_pos.z + 4.0
-				aboveGoal_state = self.moveToPos_client(aboveGoal_pos, self.move_mode, self.moveDuration_abs, self.interpol_linear)
+				aboveGoal_state = self.moveToPos_client(aboveGoal_pos, self.move_mode, self.moveDuration_abs, self.interpol_way)
 				
 				# Check if picked up
 				objectPos_new = self.objectPos_client(request,select=False)
@@ -385,6 +382,13 @@ class Manipulate():
 					return True
 					break
 					
+				num_tries += 1
+
+				if num_tries == max_tries:
+					self.pump_control(False)
+					self.toInitPos()
+
+		
 	
 		
 	
