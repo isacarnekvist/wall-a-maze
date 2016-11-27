@@ -1,6 +1,4 @@
 # Request
-bool carry
-string type # carry trap and object differently
 
 ---
 # Response

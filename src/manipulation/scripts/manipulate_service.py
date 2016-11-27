@@ -67,7 +67,7 @@ class Manipulate():
 		
 		# Initial EEF position
 		self.initPos_arm = Point(1.0, 12.0, 14.0)	# in arm frame	
-		self.carryOutPos_arm = Point(1.0, 12.0, 18.0)
+		self.carryOutPos_arm = Point(1.0, 14.0, 16.0)
 		
 		self.toInitPos()
 
@@ -99,29 +99,32 @@ class Manipulate():
 	def handle_place(self,request):
 		# TODO: Sanity check on placing position
 		placePos = self.transform_wheelToArm(request.position)
-		placePos_arm = placePos.x
+		placePos_arm = placePos.point
 
-		# Move above placing position
-		abovePlace_pos = Point(placePos_arm.x, placePos_arm.y, placePos_arm.z + 6.0)			
-	
-		abovePlace_state = self.moveToPos_client(abovePlace_pos, self.move_mode, self.moveDuration_abs, self.interpol_linear)
-		print("Moved above drop place", abovePlace_state)
-		
+		scale = 100.0
+		placePos_arm.x = placePos_arm.x*scale
+		placePos_arm.y = placePos_arm.y*scale
+		placePos_arm.z = placePos_arm.z*scale
+
 		# Place object
-		place_state = self.moveToPos_client(self.placePos_arm, self.move_mode, self.moveDuration_abs, self.interpol_linear)
-		print("Placed object at", place_state)
+		place_state = self.moveToPos_client(placePos_arm, self.move_mode, self.moveDuration_abs, self.interpol_linear)
 		
 		if place_state.error == False:	# Maybe add control to place it savely
 			self.pump_control(False)
+			print("Placed object at", place_state)
+			self.toInitPos()
 			return PlaceObjectResponse(True)
+		else:
+			return PlaceObjectResponse(False)
 
-	def handle_carryObject(self):
+
+	def handle_carryObject(self,request):
 		carryOut_state = self.moveToPos_client(self.carryOutPos_arm, self.move_mode, self.moveDuration_abs, self.interpol_linear)		
 		if carryOut_state.error == False:
-			return CarryObjectRespons(True)
+			return CarryObjectResponse(True)
 
 
-	def handle_drop(self):
+	def handle_drop(self,request):
 		# Drop object when asked so by mother a few centimeters in front of the robot
 		dropPos = self.carryOutPos_arm
 		dropPos.y = dropPos.y + 10.0
@@ -154,7 +157,6 @@ class Manipulate():
 			response = get_objectPos(PointCloud2(),color, objectType)
 			
 			# Check if requested object detected
-			print("Response is {}".format(response))
 
 			if not response.x:
 				print("No object passed")
@@ -204,7 +206,7 @@ class Manipulate():
 
 		#print("Manipulation moves robot!")
 
-		yTol = 0.02
+		yTol = 0.01
 		xTol = 0.10
 		xAim = 0.26
 		
@@ -313,7 +315,6 @@ class Manipulate():
 		while num_tries < max_tries:
 
 			objectPos = self.objectPos_client(request,select=True)
-			print("objectPos is {}".format(objectPos))
 			print("It is the {}th pickup try".format(num_tries))
 
 			if objectPos == False:
@@ -337,17 +338,16 @@ class Manipulate():
 			
 				aboveGoal_state = self.moveToPos_client(aboveGoal_pos, self.move_mode, self.moveDuration_abs, self.interpol_linear)
 				if aboveGoal_state.error == True:
-					print("Arm could not move to above Goal position, manipulation should stop!")
 					return False
 					break
 
-				print("Moved above goal", aboveGoal_state)
+				#print("Moved above goal", aboveGoal_state)
 				
 				# Correct position above robot
 				pickupPos_high_new = self.absoluteFromDifference(aboveGoal_pos, aboveGoal_state.position)
 				aboveGoal_state = self.moveToPos_client(pickupPos_high_new, self.move_mode, self.moveDuration_abs, self.interpol_linear)
-                		if aboveGoal_state.error == True:
-					print("Arm could not move to corrected above Goal position, manipulation should stop!")
+
+				if aboveGoal_state.error == True:
 					return False					
 					break
 					
@@ -362,7 +362,7 @@ class Manipulate():
 				# Move down with corrected x,y
 				atGoal_state = self.moveToPos_client(pickupPos_arm_low,self.move_mode, self.moveDuration_abs, self.interpol_linear)
 				if atGoal_state.error == True:
-					print("Arm could not move to pickup position, manipulation should stop!")
+					self.pump_control(False)
 					return False					
 					break					
 
@@ -372,6 +372,12 @@ class Manipulate():
 				
 				# Check if picked up
 				objectPos_new = self.objectPos_client(request,select=False)
+				if objectPos_new == False:
+					print("Object no longer in sight!")
+					self.pump_control(False)
+					self.toInitPos()
+					return False
+				
 				print("Object is lifted by {} m".format(objectPos_new.point.z-pickupPos_wheelcenter.z))
 
 				if (objectPos_new.point.z-pickupPos_wheelcenter.z) > zTol:
