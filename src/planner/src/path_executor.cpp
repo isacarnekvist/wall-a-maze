@@ -173,7 +173,7 @@ LinePlan PathController::get_line_plan(float target_x, float target_y, float tar
     return res;
 }
 
-const static float MAX_LINEAR_SPEED = 0.20;
+const static double MAX_LINEAR_SPEED = 0.24;
 bool PathController::line_control(const LinePlan &lp) {
     /* Have we travelled far enough? */
     if (euclidean(lp.start_x - lp.target_x, lp.start_y - lp.target_y) <= euclidean(lp.start_x - x, lp.start_y - y)) {
@@ -182,7 +182,7 @@ bool PathController::line_control(const LinePlan &lp) {
     
     /* Adjust for angle errors */
     float distance_to_target = euclidean(lp.target_x - x, lp.target_y - y);
-    float target_close_factor = 1.8 / (1 + exp(-12 * distance_to_target)) - 1.0;
+    float target_close_factor = 1.4 / (1 + exp(-12 * distance_to_target)) - 0.4;
     float theta_error = closest_theta_adjustment(theta, atan2(lp.target_y - y, lp.target_x - x));
     float sinus_error = sin(theta_error) * distance_to_target;
 
@@ -207,7 +207,7 @@ bool PathController::line_control(const LinePlan &lp) {
     float right_factor = 2 - 2 / (1 + exp(-side_k * right_min));
     float front_factor = 2 / (1 + exp(-6 * closest_front)) - 1;
     publish_twist(
-        0.2 * target_close_factor * front_factor,
+        max(MAX_LINEAR_SPEED * target_close_factor * front_factor, 0.1),
         0.8 * sinus_error + 0.3 * theta_error + right_factor - left_factor
     );
     return false;
