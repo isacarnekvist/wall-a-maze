@@ -115,7 +115,3 @@ void Map::readWalls() {
     }
     myfile.close();
 }
-
-int main() {
-    Map m = Map();
-}
