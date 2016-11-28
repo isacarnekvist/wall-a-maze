@@ -194,7 +194,7 @@ bool PathController::line_control(const LinePlan &lp) {
         if (abs(p.y) < 0.1 && p.x > 0.0) {
             closest_front = min(closest_front, p.x);
         }
-        if (p.x > 0.0 && p.x < 0.25) {
+        if (p.x > 0.0 && p.x < 0.32) {
             if (p.y < 0) {
                 right_min = min(right_min, -p.y);
             } else {
@@ -238,7 +238,7 @@ void PathController::execute_plan(LinePlan &lp) {
     case BEFORE_LINE_EXECUTION:
         if (ros::Time::now() >= lp.deadline) {
             theta_correction = closest_theta_adjustment(theta, atan2(lp.target_y - y, lp.target_x - x));
-            if (abs(theta_correction) > 0.10) {
+            if (abs(theta_correction) > 0.15) {
                 time_needed = abs(theta_correction / INITIAL_ROTATION_SPEED);
                 lp.deadline = ros::Time::now() + ros::Duration(time_needed);
                 lp.state = INITIAL_ROTATION;
