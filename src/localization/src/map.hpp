@@ -1,6 +1,7 @@
 #ifndef _MAP_HPP
 #define _MAP_HPP
 
+#include <map>
 #include <tuple>
 #include <vector>
 
@@ -36,7 +37,10 @@ public:
     bool point_approx_on_wall(float x, float y);
     bool update_from_laser(const geometry_msgs::Polygon::ConstPtr &msg);
     std::vector<Wall> walls;
-    std::vector<PickableObject> pickable_objects;
+    std::map<int, PickableObject> pickable_objects;
+    int next_pickable_id = 0;
+    int add_pickable(float x, float y);
+    void remove_pickable(int id);
     float min_x;
     float max_x;
     float min_y;
