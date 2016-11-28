@@ -214,12 +214,18 @@ bool PathController::line_control(const LinePlan &lp) {
 }
 
 void PathController::execute_plan(LinePlan &lp) {
+    float distance_to_target;
     float theta_correction;
     const static float INITIAL_ROTATION_SPEED = 0.8;
     float time_needed;
     bool target_reached;
     switch (lp.state) {
     case INITIALIZED:
+        distance_to_target = euclidean(lp.target_x - x, lp.target_y - y);
+        if (distance_to_target < 0.05) {
+            lp.deadline = ros::Time::now() + ros::Duration(0.5);
+            lp.state = BEFORE_DONE;
+        }
         theta_correction = closest_theta_adjustment(theta, atan2(lp.target_y - y, lp.target_x - x));
         time_needed = abs(theta_correction / INITIAL_ROTATION_SPEED);
         lp.deadline = ros::Time::now() + ros::Duration(time_needed);
@@ -238,7 +244,7 @@ void PathController::execute_plan(LinePlan &lp) {
     case BEFORE_LINE_EXECUTION:
         if (ros::Time::now() >= lp.deadline) {
             theta_correction = closest_theta_adjustment(theta, atan2(lp.target_y - y, lp.target_x - x));
-            if (abs(theta_correction) > 0.15) {
+            if (abs(theta_correction) > 0.5) {
                 time_needed = abs(theta_correction / INITIAL_ROTATION_SPEED);
                 lp.deadline = ros::Time::now() + ros::Duration(time_needed);
                 lp.state = INITIAL_ROTATION;
