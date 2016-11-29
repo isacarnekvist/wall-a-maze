@@ -15,7 +15,8 @@ from std_msgs.msg import String
 from sensor_msgs.msg import Image
 from ras_msgs.msg import RAS_Evidence
 #from planner.msg import PlannerTarget
-from geometry_msgs.msg import PoseStamped, PointStamped, TransformStamped
+from geometry_msgs.msg import PoseStamped, PointStamped, TransformStamped, Point
+from localization.srv import AddPickable, RemovePickable
 
 from planner.msg import PlannerTargetGoal, PlannerTargetAction
 from classifier.msg import Object as classifierObject
@@ -31,6 +32,8 @@ class DetectedObject:
         self.z = z
         self.type_str = type_str
         self.color_str = color_str
+        rospy.wait_for_service('/map/add_pickable')
+        rospy.wait_for_service('/map/remove_pickable')        
 
     def __eq__(self, other):
         if self.type_str != other.type_str:
@@ -46,6 +49,10 @@ class DetectedObject:
 
 class Mother:
 
+    X=0
+    Y=0
+    T=0
+
     def __init__(self):
         self.speaker = rospy.Publisher('espeak/string', String, queue_size=10)
         self.evidence = rospy.Publisher('/evidence', RAS_Evidence, queue_size=10)
@@ -53,16 +60,17 @@ class Mother:
             'path_executor',
             PlannerTargetAction
         )
-        self.planner_client.wait_for_server()
+        self.planner_client.wait_for_server()     
         self.x = None
         self.y = 0.0
         self.theta = 0.0
         self.possible_objects = []
-        # Give ROS a little time to acknowledge publisher, especially for planner
+        # Give ROS a little time to acknowledge publisher, especially for planner        
         sleep(0.5)
 
     def run(self, x=None, y=None, theta=None):
         self.stop()
+        global X,Y,T        
         object_target = None
         detected_object = None
         pickup_goal = None
@@ -70,73 +78,92 @@ class Mother:
         if x is not None:
             goal = PlannerTargetGoal()
             goal.x = x
+            X=x
             goal.y = y
+            Y=y            
             goal.theta = theta
+            T=theta            
             self.planner_client.send_goal(goal)
         while not rospy.is_shutdown():
             if(self.planner_client.wait_for_result()):
+                print(self.planner_client.get_result())
                 return
             rate.sleep()        
         return
 
     def stop(self):
         self.planner_client.cancel_goal()
+        return
+
+    def approach(self,x=None, y=None, theta=None):
+        global X,Y,Z        
+        old_x=X
+        old_y=Y
+        old_theta=T
+        print("going to objectwith x,y,theta:",x,y,theta)
+        mother.run(x=x,y=y,theta=theta)
+        print("going to previous target")
+        sleep(1)
+        mother.run(x=old_x,y=old_y,theta=old_theta)
+        return
 
     def perception_callback(self, data):
         if self.x is None: # fix this properly!
             return
         do = DetectedObject(
-            self.x + data.x,
-            self.y + data.y,
+            self.x + data.x * np.cos(self.theta) - data.y * np.sin(self.theta),
+            self.y + data.x * np.sin(self.theta) + data.y * np.cos(self.theta),
             data.z,
             data.type,
             data.color
         )
+
+        #Add pickable in the map
+        try:
+            add_pickable = rospy.ServiceProxy('/map/add_pickable',AddPickable)
+            response = add_pickable(do.x,do.y)
+            print("response:",response)
+        except rospy.ServiceException, e:
+            print("Add Pickable service could not be called")        
         for o in self.possible_objects:
             if o == do:
                 o.x = do.x
                 o.y = do.y
                 o.z = do.z
                 return
+
         # speak!
         self.speaker.publish('I see a {} {}'.format(data.color, data.type))
-        self.stop()
 
         #RAS Evidence
-        image=rospy.client.wait_for_message('/camera/rgb/image_raw',Image)  
-        
+        image=rospy.client.wait_for_message('/camera/rgb/image_raw',Image)         
         evidence = RAS_Evidence()
         evidence.group_number = 6
         evidence. image_evidence = image
         evidence.object_id = data.color + '_' + data.type 
         
-        #Robot frame!!!!!!!
-        evidence.object_location.transform.translation.x = self.x + data.x
-        evidence.object_location.transform.translation.y = self.y + data.y
-        evidence.object_location.transform.translation.z = data.z
-        
+        #Robot frame??
+        evidence.object_location.transform.translation.x = do.x
+        evidence.object_location.transform.translation.y = do.y
+        evidence.object_location.transform.translation.z = data.z        
         self.evidence.publish(evidence) 
+        print ("I saw",data.color,data.type)
+
+        theta=np.arctan((do.y-self.y)/(do.x-self.x))
+        #Approach
+        sleep(1)
+        mother.approach(x=do.x, y=do.y, theta=theta)
+        print("I came back here")
 
         # Call manipulation service
         pickup_location = PointStamped()
         pickup_location.point = Point(data.x,data.y,data.z)
         pickup_location.header.frame_id = 'wheel_center'
 
-        object_type = 'cube'
-        object_color = 'red'
+        object_type = data.type
+        object_color = data.color
 
         isPickedUp = self.pickupObject_client(pickup_location,object_type,object_color)
-
-        pickupObject = PointStamped()
-        pickupObject.point.x = data.x
-        pickupObject.point.y = data.y
-        pickupObject.point.z = data.z
-        pickupObject.header.frame_id = 'wheel_center'
-
-        color ='red'
-        object_type = 'cube'
-
-        self.pickup_client(pickupObject,color,object_type)
 
         self.possible_objects.append(do)
         print('length of po:', len(self.possible_objects))
@@ -270,3 +297,9 @@ if __name__ == '__main__':
         raise NotImplementedError('Only goto implemented atm')
 
     rospy.spin()
+
+
+#map_updated,Bool
+#import os
+#fn=os.environ.get('MAP_PATH')
+
