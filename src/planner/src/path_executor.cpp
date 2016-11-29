@@ -415,7 +415,7 @@ void PathController::execute_callback(const planner::PlannerTargetGoal::ConstPtr
     }
     stop_motors();
     planner::PlannerTargetResult res;
-    res.reached_target = false;
+    res.reached_target = true;
     server.setSucceeded(res);
     executing_plan = false;
 }
@@ -447,7 +447,6 @@ bool PathController::path_is_obstructed(const LinePlan &lp) {
     for (const geometry_msgs::Point32 &p : scans) {
         if (p.x < 0) continue;
         if (abs(p.y) < k * p.x + w) {
-            cout << "inside cone" << endl;
             if (p.x + w > distance_to_target) {
                 continue;
             } else {
