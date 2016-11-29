@@ -57,7 +57,11 @@ float Particle::likelihood(const Map &map, const vector<tuple<float, float> > &s
         angle = get<0>(t);
         scan = get<1>(t);
         if (scan < 0.15) continue;
-        float map_distance = map.distance(x, y, theta + angle);
+        float map_distance = map.distance(
+            x + cos(theta) * 0.08 - sin(theta) * 0.009,
+            y + sin(theta) * 0.08 + cos(theta) * 0.009,
+            theta + angle
+        );
         if (scan == INF && map_distance == INF) {
             discrepancies.push_back(0.0);
         } else if (scan == INF || map_distance == INF) {
