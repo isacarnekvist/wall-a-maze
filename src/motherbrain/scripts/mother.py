@@ -22,6 +22,7 @@ from classifier.msg import Object as classifierObject
 
 from manipulation.srv import *
 
+
 class DetectedObject:
 
     def __init__(self, x, y, z, type_str, color_str):
@@ -52,7 +53,6 @@ class Mother:
             'path_executor',
             PlannerTargetAction
         )
-    #self.pickup_object = rospy.ServiceProxy('
         self.planner_client.wait_for_server()
         self.x = None
         self.y = 0.0
@@ -103,7 +103,7 @@ class Mother:
         self.stop()
 
         #RAS Evidence
-        image=rospy.client.wait_for_message('/camera/rgb/image_raw',Image)	
+        image=rospy.client.wait_for_message('/camera/rgb/image_raw',Image)  
         
         evidence = RAS_Evidence()
         evidence.group_number = 6
@@ -115,7 +115,17 @@ class Mother:
         evidence.object_location.transform.translation.y = self.y + data.y
         evidence.object_location.transform.translation.z = data.z
         
-        self.evidence.publish(evidence)	
+        self.evidence.publish(evidence) 
+
+        # Call manipulation service
+        pickup_location = PointStamped()
+        pickup_location.point = Point(data.x,data.y,data.z)
+        pickup_location.header.frame_id = 'wheel_center'
+
+        object_type = 'cube'
+        object_color = 'red'
+
+        isPickedUp = self.pickupObject_client(pickup_location,object_type,object_color)
 
         pickupObject = PointStamped()
         pickupObject.point.x = data.x
@@ -127,6 +137,7 @@ class Mother:
         object_type = 'cube'
 
         self.pickup_client(pickupObject,color,object_type)
+
         self.possible_objects.append(do)
         print('length of po:', len(self.possible_objects))
 
@@ -141,9 +152,46 @@ class Mother:
         ]
         self.theta = tf.transformations.euler_from_quaternion(q)[-1] # roll
 
-#	def collision(data):
-#		if(data=="Stop"):
-#			mother.stop()
+
+    def pickupObject_client(self,position,object_type,object_color):
+        rospy.wait_for_service('/manipulation/pickup_object')
+        try:
+            pickup_object = rospy.ServiceProxy('/manipulation/pickup_object',PickupObject)
+            response = pickup_object(position,object_type,object_color)
+            return response
+        except rospy.ServiceException, e:
+            print("PickupObject service could not be called")
+
+    def placeObject_client(self,position):
+        rospy.wait_for_service('/manipulation/place_object')
+        try:
+            place_object = rospy.ServiceProxy('/manipulation/place_object',PlaceObject)
+            response = place_object(position)
+            return response
+        except rospy.ServiceException, e:
+            print("PlaceObject service could not be called")
+
+    def dropObject_client(self):
+        rospy.wait_for_service('/manipulation/drop_object')
+        try:
+            drop_object = rospy.ServiceProxy('/manipulation/drop_object',DropObject)
+            response = drop_object()
+            return response
+        except rospy.ServiceException, e:
+            print("DropObject service could not be called")
+
+    def carryObject_client(self):
+        rospy.wait_for_service('/manipulation/carry_object')
+        try:
+            carry_object = rospy.ServiceProxy('/manipulation/carry_object',CarryObject)
+            response = carry_object()
+            return response
+        except rospy.ServiceException, e:
+            print("CarryObject service could not be called")
+        
+#   def collision(data):
+#       if(data=="Stop"):
+#           mother.stop()
 
 
     def pickup_client(self,position, color, object_type):
