@@ -14,6 +14,8 @@
 #include <geometry_msgs/Polygon.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
+#include <localization/AddPickable.h>
+#include <localization/RemovePickable.h>
 #include <planner/PlannerStatus.h>
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
@@ -25,6 +27,7 @@
 
 using namespace std;
 
+/* (S)L(AM) */
 class Localization {
 public:
     Localization(ros::NodeHandle &node_handle);
@@ -36,6 +39,10 @@ public:
     void publish_pose_estimate();
     void publish_map_visualization();
     void publish_updated_obstacles();
+    bool add_pickable(localization::AddPickable::Request &req,
+                      localization::AddPickable::Response &res);
+    bool remove_pickable(localization::RemovePickable::Request &req,
+                         localization::RemovePickable::Response &res);
     ParticleFilter *particle_filter; /* Doesn't work without '*' and new */
 private:
     vector<tuple<float, float> > scans;
@@ -126,6 +133,18 @@ void Localization::publish_updated_obstacles() {
         res.points.push_back(p1);
         res.points.push_back(p2);
     }
+    for (std::pair<const int, PickableObject> &po_pair : map.pickable_objects) {
+        geometry_msgs::Point32 p1;
+        p1.x = po_pair.second.x - 0.02;
+        p1.y = po_pair.second.y - 0.02;
+        p1.z = 0;
+        geometry_msgs::Point32 p2;
+        p2.x = po_pair.second.x + 0.02;
+        p2.y = po_pair.second.y + 0.02;
+        p2.z = 0;
+        res.points.push_back(p1);
+        res.points.push_back(p2);
+    }
     obstacle_publisher.publish(res);
 }
 
@@ -156,6 +175,31 @@ void Localization::publish_map_visualization() {
         wall_marker.scale.x = std::max(0.01,dist);
         wall_marker.pose.position.x = (w.x1+w.x2)/2;
         wall_marker.pose.position.y = (w.y1+w.y2)/2;
+        //wall_marker.text=line_stream.str();
+        tf::Quaternion quat; quat.setRPY(0.0,0.0,angle);
+        tf::quaternionTFToMsg(quat, wall_marker.pose.orientation);
+
+        //// add to array
+        wall_marker.id = wall_id;
+        all_markers.markers.push_back(wall_marker);
+        wall_id++;
+    }
+
+    /* Send pickable objects */
+    wall_marker.color.r = (255.0/255.0);
+    wall_marker.color.g = (255.0/255.0);
+    wall_marker.color.b = (0.0/255.0);
+    for (std::pair<const int, PickableObject> &po_pair : map.pickable_objects) {
+
+        // angle and distance
+        double angle = M_PI / 2;
+        double dist = 0.05;
+
+        // set pose
+        wall_marker.scale.x = dist;
+        wall_marker.scale.y = dist;
+        wall_marker.pose.position.x = po_pair.second.x;
+        wall_marker.pose.position.y = po_pair.second.y;
         //wall_marker.text=line_stream.str();
         tf::Quaternion quat; quat.setRPY(0.0,0.0,angle);
         tf::quaternionTFToMsg(quat, wall_marker.pose.orientation);
@@ -201,13 +245,32 @@ void Localization::laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) {
         float distance = msg->ranges[degree];
         if (distance == INF || distance < 0.4) continue;
         float alpha = M_PI * (degree + 88.5) / 180.0;
-        float x = distance * cos(alpha) + 0.08;
-        float y = distance * sin(alpha) + 0.009;
+        float x = distance * cos(alpha);
+        float y = distance * sin(alpha);
+        //float x = distance * cos(alpha) + 0.08;
+        //float y = distance * sin(alpha) + 0.009;
         float alpha_prim = atan2(y, x);
         float dist_prim = sqrt(pow(x, 2) + pow(y, 2));
         scans.push_back(make_tuple(alpha_prim, dist_prim));
     }
     recieved_laser = true;
+}
+
+bool Localization::add_pickable(localization::AddPickable::Request &req,
+                                localization::AddPickable::Response &res)
+{
+    int id = map.add_pickable(req.x, req.y);
+    publish_updated_obstacles();
+    res.id = id;
+    return true;
+}
+
+bool Localization::remove_pickable(localization::RemovePickable::Request &req,
+                                   localization::RemovePickable::Response &res)
+{
+    map.remove_pickable(req.id);
+    publish_updated_obstacles();
+    return true;
 }
 
 int main(int argc, char **argv) {
@@ -247,6 +310,18 @@ int main(int argc, char **argv) {
         "/odometry",
         10,
         &Localization::odometry_callback,
+        &localization
+    );
+
+    ros::ServiceServer add_pickable_server = node_handle.advertiseService(
+        "/map/add_pickable",
+        &Localization::add_pickable,
+        &localization
+    );
+
+    ros::ServiceServer remove_pickable_server = node_handle.advertiseService(
+        "/map/remove_pickable",
+        &Localization::remove_pickable,
         &localization
     );
 
