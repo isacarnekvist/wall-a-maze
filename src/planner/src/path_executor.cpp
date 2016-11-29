@@ -176,13 +176,13 @@ LinePlan PathController::get_line_plan(float target_x, float target_y, float tar
 const static double MAX_LINEAR_SPEED = 0.24;
 bool PathController::line_control(const LinePlan &lp) {
     /* Have we travelled far enough? */
-    if (euclidean(lp.start_x - lp.target_x, lp.start_y - lp.target_y) <= euclidean(lp.start_x - x, lp.start_y - y)) {
+    if (euclidean(lp.start_x - lp.target_x, lp.start_y - lp.target_y) - 0.04 <= euclidean(lp.start_x - x, lp.start_y - y)) {
         return true;
     }
     
     /* Adjust for angle errors */
     float distance_to_target = euclidean(lp.target_x - x, lp.target_y - y);
-    float target_close_factor = 1.4 / (1 + exp(-12 * distance_to_target)) - 0.4;
+    float target_close_factor = 1.6 / (1 + exp(-6 * distance_to_target)) - 0.6;
     float theta_error = closest_theta_adjustment(theta, atan2(lp.target_y - y, lp.target_x - x));
     float sinus_error = sin(theta_error) * distance_to_target;
 
@@ -244,7 +244,7 @@ void PathController::execute_plan(LinePlan &lp) {
     case BEFORE_LINE_EXECUTION:
         if (ros::Time::now() >= lp.deadline) {
             theta_correction = closest_theta_adjustment(theta, atan2(lp.target_y - y, lp.target_x - x));
-            if (abs(theta_correction) > 0.5) {
+            if (abs(theta_correction) > 0.2) {
                 time_needed = abs(theta_correction / INITIAL_ROTATION_SPEED);
                 lp.deadline = ros::Time::now() + ros::Duration(time_needed);
                 lp.state = INITIAL_ROTATION;
@@ -432,12 +432,20 @@ void PathController::map_updated_callback(const std_msgs::Bool::ConstPtr &msg) {
 }
 
 bool PathController::path_is_obstructed(const LinePlan &lp) {
-    return false;
+    float l = 0.6;
+    float w = 0.16;
+    float k = -w / l;
     float distance_to_target = euclidean(lp.target_x - x, lp.target_y - y);
     for (const geometry_msgs::Point32 &p : scans) {
         if (p.x < 0) continue;
-        if (abs(p.y) < 0.13 && p.x > 0.0 && p.x < 0.165) {
-            return true;
+        cout << abs(p.y) << " < " << k * p.x + w << endl;
+        if (abs(p.y) < k * p.x + w) {
+            cout << "inside cone" << endl;
+            if (p.x + w > distance_to_target) {
+                continue;
+            } else {
+                return true;
+            }
         }
     }
     return false;
