@@ -351,6 +351,12 @@ void PathController::execute_callback(const planner::PlannerTargetGoal::ConstPtr
     path_plan_client.call(srv);
 
     int n_sections = srv.response.plan.points.size();
+    if (n_sections == 0) {
+        planner::PlannerTargetResult res;
+        res.reached_target = false;
+        server.setSucceeded(res);
+        return;
+    }
     int current_section = 0;
     LinePlan current_line_plan = get_line_plan(
         srv.response.plan.points[0].x,
@@ -408,7 +414,9 @@ void PathController::execute_callback(const planner::PlannerTargetGoal::ConstPtr
         r.sleep();
     }
     stop_motors();
-    server.setSucceeded();
+    planner::PlannerTargetResult res;
+    res.reached_target = false;
+    server.setSucceeded(res);
     executing_plan = false;
 }
 
@@ -438,7 +446,6 @@ bool PathController::path_is_obstructed(const LinePlan &lp) {
     float distance_to_target = euclidean(lp.target_x - x, lp.target_y - y);
     for (const geometry_msgs::Point32 &p : scans) {
         if (p.x < 0) continue;
-        cout << abs(p.y) << " < " << k * p.x + w << endl;
         if (abs(p.y) < k * p.x + w) {
             cout << "inside cone" << endl;
             if (p.x + w > distance_to_target) {
