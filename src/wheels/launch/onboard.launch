@@ -49,4 +49,8 @@
 	<!-- Vision -->
 	<!--include file="$(find classifier)/launch/classifier.launch"/-->
 
+    <!-- Booby trap detection -->
+    <!--include file="$(find qrcode_detection)/launch/qr.launch"/-->    
+    <!--node name="camera_broadcaster" pkg="qrcode_detection" type="camera_broadcaster.py" /-->
+
 </launch>
