@@ -37,7 +37,7 @@
 	<!-- UArm -->
 	<include file="$(find uarm)/launch/kth_uarm.launch" />
 	<node name="arm_broadcaster" pkg="manipulation" type="arm_broadcaster.py" />
-	<!--node name="manipulation_server" pkg="manipulation" type="manipulate_service.py" /-->
+	<node name="manipulation_server" pkg="manipulation" type="manipulate_service.py" />
 	
 
 	<!-- Speaker node -->
@@ -49,8 +49,8 @@
 	<!-- Vision -->
 	<!--include file="$(find classifier)/launch/classifier.launch"/-->
 
-    <!-- Booby trap detection -->
-    <!--include file="$(find qrcode_detection)/launch/qr.launch"/-->    
-    <!--node name="camera_broadcaster" pkg="qrcode_detection" type="camera_broadcaster.py" /-->
+        <!-- Booby trap detection -->
+        <include file="$(find qrcode_detection)/launch/qr.launch"/>    
+        <node name="camera_broadcaster" pkg="qrcode_detection" type="camera_broadcaster.py" />
 
 </launch>
