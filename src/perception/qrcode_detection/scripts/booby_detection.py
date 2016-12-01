@@ -26,6 +26,9 @@ class BoobyDetection():
 
     def visp_callback(self,data):
     	
+        if data.pose.position.z < 0.01:
+            return
+
     	qr_pose_camera = data
     	qr_pose_camera.header.frame_id = 'camera'
     	qr_pose_wheel = self.transform_cameraToWheel(qr_pose_camera)
@@ -40,7 +43,7 @@ class BoobyDetection():
     	qr_pickup = PointStamped()
     	qr_pickup.header.frame_id = 'wheel_center'
 
-    	dist_qr_to_top = 0.065
+    	dist_qr_to_top = 0.050
     	dist_qr_to_center = 0.050
     	qr_pickup.point.z = qr_pose_wheel.pose.position.z + dist_qr_to_top
         qr_pickup.point.x = qr_pose_wheel.pose.position.x + dist_qr_to_center*np.sin(euler[0])
@@ -50,7 +53,8 @@ class BoobyDetection():
     	print("The euler angles in wheel_center are {}".format(euler))
         print("The qr code position is at {}".format(qr_pose_wheel.pose.position))
         print("The pickup location is at {}".format(qr_pickup.point))
-    	self.booby_publish.publish(qr_pickup)
+        
+        self.booby_publish.publish(qr_pickup)
 
 
     def transform_cameraToWheel(self, data):
