@@ -83,7 +83,7 @@ void Localization::publish_pose_estimate() {
     /* Reestimate */
     if (!recieved_laser) return;
     vector<tuple<float, float> > some_scans_n_shit = vector<tuple<float, float> >();
-    for (int i = 0; i < scans.size(); i += 4) {
+    for (int i = 0; i < scans.size(); i += 2) {
         some_scans_n_shit.push_back(scans[i]);
     }
     particle_filter->resample(map, some_scans_n_shit);
