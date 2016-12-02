@@ -1,0 +1,7 @@
+# Compute Normals
+radiusSearch: 0.01
+
+# Compute VFH Signature
+normalizeBins: true
+EPSAngle: 5.0 / 180.0 + pi
+maxCurv: 1.0
