@@ -2,7 +2,8 @@
 translation: { x: 0.105, y: 0.0, z: 0.145 }
 rotation: { yaw: 0.0, roll: 35.0, pitch: 3.0 }
 
-color_names: [ 'red', 'blue', 'green', 'orange', 'purple', 'yellow' ]
+color_names: [ 'red', 'blue', 'green', 'orange', 'purple' ]
+# , 'yellow',  ]
 red_hsv: { h_min: 0.0, h_max: 15.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
 
 orange_hsv: { h_min: 15.0, h_max: 25.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 } 
@@ -11,47 +12,34 @@ yellow_hsv: { h_min: 25.0, h_max: 50.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_ma
 
 green_hsv: { h_min: 60.0, h_max: 130.0, s_min: 0.2, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
 
-blue_hsv: { h_min: 130.0, h_max: 215.0, s_min: 0.2, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
+blue_hsv: { h_min: 140.0, h_max: 215.0, s_min: 0.2, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
 
 purple_hsv: { h_min: 250.0, h_max: 360.0, s_min: 0.10, s_max: 1.0, v_min: 0.3, v_max: 1.0 }
 
 red_2_hsv: { h_min: 355.0, h_max: 360.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
 
-red_types: [ 'cube', 'ball', 'hollow cube' ]
-orange_types: [ 'star' ]
-yellow_types: [ 'cube', 'ball' ]
-green_types: [ 'cylinder', 'cube' ]
+red_types: [ 'cube', 'ball' ]
 blue_types: [ 'cube', 'triangle' ]
+green_types: [ 'cylinder', 'cube', 'hollow cube' ]
 purple_types: [ 'cross', 'star' ]
+yellow_types: [ 'cube', 'ball' ]
+orange_types: [ 'star' ]
 
 # Remove Outliers
 outlierMaxNeighbours: 20
 outlierStddev: 1.0
 
-# For removing walls
-wall_color_hsv: { h_min: 0.0, h_max: 360.0, s_min: 0.00, s_max: 0.5, v_min: 0.5, v_max: 1.0 }
-
 # Cluster Segmentation
 clusterTolerance: 0.02
-# 300
-minClusterSize: 200
+minClusterSize: 100
 maxClusterSize: 25000
 
-# Max distance for classification
-classifyMaxDistance: 0.3
-
 # Points Size [ X, Y, Z ]
-pointSize: [ 0.002, 0.002, 0.002 ]
+pointSize: [ 0.003, 0.003, 0.003 ]
 
 # Classifier limits
-red_certaintyLimit: { cube: 1100, ball: 600, hollow cube: 1500 }
-orange_certaintyLimit: { star: 1500 }
-yellow_certaintyLimit: { cube: 1800, ball: 1000 }
-green_certaintyLimit: { cube: 1300, cylinder: 1200 }
-blue_certaintyLimit: { cube: 1000, triangle: 1400 }
-purple_certaintyLimit: { cross: 1000, star: 1000 }
-lowCertaintyLimit: 2000.0
-highCertaintyLimit: 2000.0
+lowCertaintyLimit: 200.0 
+highCertaintyLimit: 200.0
 
 # 'CAD' or 'Real'
 whatTypeOfData: 'Real'

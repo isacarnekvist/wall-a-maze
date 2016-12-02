@@ -38,11 +38,6 @@ std::string data_extension = ".pcd";
 
 double outlierMaxNeighbours, outlierStddev, clusterTolerance, minClusterSize, maxClusterSize;
 
-Eigen::Vector3f translation;
-Eigen::Quaternionf rotation;
-
-std::vector<float> pointSize;
-
 void initParams(ros::NodeHandle n) {
     n.getParam("/outlierMaxNeighbours", outlierMaxNeighbours);
     n.getParam("/outlierStddev", outlierStddev);
@@ -50,50 +45,12 @@ void initParams(ros::NodeHandle n) {
     n.getParam("/clusterTolerance", clusterTolerance);
     n.getParam("/minClusterSize", minClusterSize);
     n.getParam("/maxClusterSize", maxClusterSize);
-
-    n.getParam("/pointSize", pointSize);
-
-    double transform_x;
-    double transform_y;
-    double transform_z;
-    double transform_yaw;
-    double transform_roll;
-    double transform_pitch;
-
-    n.getParam("/translation/x", transform_x);
-    n.getParam("/translation/y", transform_y);
-    n.getParam("/translation/z", transform_z);
-    n.getParam("/rotation/yaw", transform_yaw);
-    n.getParam("/rotation/roll", transform_roll);
-    n.getParam("/rotation/pitch", transform_pitch);
-
-    translation << transform_y, -transform_z, transform_x;
-
-    double yaw = transform_yaw * PI / 180.0;
-    double roll = -transform_roll * PI / 180.0;
-    double pitch = transform_pitch * PI / 180.0;
-
-    double t0 = std::cos(yaw * 0.5f);
-    double t1 = std::sin(yaw * 0.5f);
-    double t2 = std::cos(roll * 0.5f);
-    double t3 = std::sin(roll * 0.5f);
-    double t4 = std::cos(pitch * 0.5f);
-    double t5 = std::sin(pitch * 0.5f);
-
-    double w = t0 * t2 * t4 + t1 * t3 * t5;
-    double x = t0 * t3 * t4 - t1 * t2 * t5;
-    double y = t0 * t2 * t5 + t1 * t3 * t4;
-    double z = t1 * t2 * t4 - t0 * t3 * t5;
-
-    Eigen::Quaternionf rotationTemp(w, x, y, z);
-
-    rotation = rotationTemp;
 }
 
-std::string getFileName(std::string colorName, std::string object) {
+std::string getFileName(std::string object) {
     int currentMax = 0;
 
-    boost::filesystem::path p(save_dir + "/" + colorName + "/" + object);
+    boost::filesystem::path p(save_dir + "/" + object);
 
     for (boost::filesystem::directory_iterator i = boost::filesystem::directory_iterator(p); i != boost::filesystem::directory_iterator(); i++) {
         if (!boost::filesystem::is_directory(i->path())) {
@@ -113,8 +70,8 @@ std::string getFileName(std::string colorName, std::string object) {
     return boost::lexical_cast<std::string>(currentMax);
 }
 
-std::vector<objectLocation> getObjectLocations() {
-    std::vector<objectLocation> objectLocations;
+std::vector<std::pair<std::pair<std::string, std::string>, std::string> > getObjectLocations() {
+    std::vector<std::pair<std::pair<std::string, std::string>, std::string> > objectLocations;
 
     boost::filesystem::path p(load_dir);
 
@@ -122,7 +79,7 @@ std::vector<objectLocation> getObjectLocations() {
         std::string color = i->path().filename().string();
         if (boost::filesystem::is_directory(i->path())) {
             for (boost::filesystem::directory_iterator j = boost::filesystem::directory_iterator(i->path()); j != boost::filesystem::directory_iterator(); j++) {
-                std::string type = j->path().filename().string();
+                std::string object = j->path().filename().string();
                 if (boost::filesystem::is_directory(j->path())) {
                     for (boost::filesystem::directory_iterator k = boost::filesystem::directory_iterator(j->path()); k != boost::filesystem::directory_iterator(); k++) {
                         if (!boost::filesystem::is_directory(k->path())) {
@@ -137,11 +94,8 @@ std::vector<objectLocation> getObjectLocations() {
                             }
 
                             if (found) {
-                                objectLocation objLocation;
-                                objLocation.color = color;
-                                objLocation.type = type;
-                                objLocation.location = k->path().string();
-                                objectLocations.push_back(objLocation);
+                                std::pair<std::string, std::string> type = std::make_pair<std::string, std::string>(color, object);
+                                objectLocations.push_back(std::make_pair<std::pair<std::string, std::string>, std::string>(type, k->path().string()));
                             }
                         }
                     }
@@ -156,7 +110,7 @@ std::vector<objectLocation> getObjectLocations() {
 void extract(pcl_rgb::Ptr & cloud, std::string colorName, std::string object, ros::NodeHandle n) {
     // Make dir for this object
     //std::cout << "Make dir for object" << std::endl;
-    boost::filesystem::path dir(save_dir + "/" + colorName + "/" + object);
+    boost::filesystem::path dir(save_dir + "/" + object);
     boost::filesystem::create_directories(dir);
 
     std::map<std::string, double> color_hsv;
@@ -170,32 +124,30 @@ void extract(pcl_rgb::Ptr & cloud, std::string colorName, std::string object, ro
 
     hsvColor color = { color_hsv["h_min"], color_hsv["h_max"], color_hsv["s_min"], color_hsv["s_max"], color_hsv["v_min"], color_hsv["v_max"] };
 
-    PointCloudHelper::preProcess(cloud, translation, rotation, pointSize);
-
     std::vector<pcl_rgb::Ptr> objects = PointCloudHelper::getObjects(cloud, color, outlierMaxNeighbours, outlierStddev, clusterTolerance, minClusterSize, maxClusterSize);
 
-    std::cout << "Number of " << colorName << " objects found in this view: " << objects.size() << std::endl;
+    std::cout << objects.size() << std::endl;
     for (size_t i = 0; i < objects.size(); i++) {
         // Save the object Point Cloud to file
-        pcl::io::savePCDFileBinary(save_dir + "/" + colorName + "/" + object + "/" + getFileName(colorName, object) + data_extension, *objects[i]);
+        pcl::io::savePCDFileBinary(save_dir + "/" + object + "/" + getFileName(object) + data_extension, *objects[i]);
         std::cout << "Saved a new Point Cloud of a " << colorName << " " << object << " at:" << std::endl;
-        std::cout << save_dir << "/" << colorName << "/" << object << "/" << (atoi(getFileName(colorName, object).c_str()) - 1) << data_extension << std::endl;
+        std::cout << save_dir << "/" << object << "/" << (atoi(getFileName(object).c_str()) - 1) << data_extension << std::endl;
     }
 }
 
 void extract_object(ros::NodeHandle n) {
     // Get object locations
     std::cout << "Getting locations of objects" << std::endl;
-    std::vector<objectLocation> objectLocations = getObjectLocations();
+    std::vector<std::pair<std::pair<std::string, std::string>, std::string> > objectLocations = getObjectLocations();
 
-    for (size_t i = 0; i < objectLocations.size() && ros::ok(); i++) {
+    for (size_t i = 0; i < objectLocations.size(); i++) {
         std::cout << "Processing view " << (i+1) << " of " << objectLocations.size() << std::endl;
-        std::cout << "A " << objectLocations[i].color << " " << objectLocations[i].type << std::endl;
+        std::cout << "A " << objectLocations[i].first.first << " " << objectLocations[i].first.second << std::endl;
 
         pcl_rgb::Ptr cloud (new pcl_rgb);
-        pcl::io::loadPCDFile<pcl::PointXYZRGB>(objectLocations[i].location, *cloud);
+        pcl::io::loadPCDFile<pcl::PointXYZRGB>(objectLocations[i].second, *cloud);
 
-        extract(cloud, objectLocations[i].color, objectLocations[i].type, n);
+        extract(cloud, objectLocations[i].first.first, objectLocations[i].first.second, n);
     }
 }
 
@@ -207,3 +159,40 @@ int main(int argc, char **argv) {
 
     extract_object(nh);
 }
+
+
+
+
+int getNumFilesWithExtensionMaxDepth(std::string dir, std::string extension, int depth) {
+    if (depth < 0) {
+        return 0;
+    }
+    depth--;
+
+    int numObjects = 0;
+
+    boost::filesystem::path p(dir);
+
+    for (boost::filesystem::directory_iterator i = boost::filesystem::directory_iterator(p); i != boost::filesystem::directory_iterator(); i++) {
+        if (!boost::filesystem::is_directory(i->path())) {
+            std::string fileName = i->path().filename().string();
+
+            bool found = true;
+            for (size_t i = 1; i <= extension.size(); i++) {
+                if (fileName[fileName.size() - i] != extension[extension.size() - i]) {
+                    found = false;
+                    break;
+                }
+            }
+
+            if (found) {
+                numObjects++;
+            }
+        } else {
+            numObjects += getNumFilesWithExtensionMaxDepth(i->path().string(), extension, depth);
+        }
+    }
+
+    return numObjects;
+}
+
