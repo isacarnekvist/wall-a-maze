@@ -30,7 +30,7 @@
 
 typedef std::pair<std::string, std::vector<float> > vfh_model;
 
-std::vector<std::string> objects;
+std::map<std::string, std::vector<std::string> > objects;
 
 std::string views_dir;
 std::string view_extension = ".pcd";
@@ -67,12 +67,12 @@ void initParams(ros::NodeHandle n) {
     training_dir = ros::package::getPath("classifier") + "/Data/Training/" + whatTypeOfData;
 }
 
-void loadVFHModels(std::vector<vfh_model> & models) {
+void loadVFHModels(std::vector<vfh_model> & models, std::string color) {
     // TODO: Use the one in cvfh instead!
-    for (size_t i = 0; i < objects.size(); i++) {
+    for (size_t i = 0; i < objects[color].size(); i++) {
         size_t j = 0;
         while (true) {
-            std::string dir = vfhs_dir + "/" + objects[i] + "/" + boost::lexical_cast<std::string>(j) + vfhs_extension;
+            std::string dir = vfhs_dir + "/" + color + "/" + objects[color][i] + "/" + boost::lexical_cast<std::string>(j) + vfhs_extension;
 
             // Load the file as PCD
             pcl::PCLPointCloud2 cloud;
@@ -101,7 +101,7 @@ void loadVFHModels(std::vector<vfh_model> & models) {
                 for (size_t k = 0; k < fields[pcl::getFieldIndex(cloud, "vfh")].count; k++) {
                     vfh.second[k] = point.points[l].histogram[k];
                 }
-                vfh.first = objects[i]; // Maybe something else so we know the pose?
+                vfh.first = objects[color][i]; // Maybe something else so we know the pose?
 
                 models.push_back(vfh);
             }
@@ -111,8 +111,8 @@ void loadVFHModels(std::vector<vfh_model> & models) {
     }
 }
 
-void loadViews(std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> & views, std::string object) {
-    boost::filesystem::path p(views_dir + "/" + object);
+void loadViews(std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> & views, std::string color, std::string object) {
+    boost::filesystem::path p(views_dir + "/" + color + "/" + object);
 
     for (boost::filesystem::directory_iterator i = boost::filesystem::directory_iterator(p); i != boost::filesystem::directory_iterator(); i++) {
         if (!boost::filesystem::is_directory(i->path())) {
@@ -121,7 +121,7 @@ void loadViews(std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> & views, std:
             if (fileName.find(view_extension) != std::string::npos) {
                 pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
 
-                pcl::io::loadPCDFile<pcl::PointXYZRGB>(views_dir + "/" + object + "/" + fileName, *cloud);
+                pcl::io::loadPCDFile<pcl::PointXYZRGB>(views_dir + "/" + color + "/" + object + "/" + fileName, *cloud);
 
                 views.push_back(cloud);
             }
@@ -130,84 +130,100 @@ void loadViews(std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> & views, std:
 }
 
 void train() {
-    for (size_t i = 0; i < objects.size(); i++) {
-        std::cout << "Processing [" << (i+1) << "/" << objects.size() << "]: " << objects[i] << std::endl;
+    for (std::map<std::string, std::vector<std::string> >::iterator iter = objects.begin(); iter != objects.end(); iter++) {
+        std::string color = iter->first;
 
-        // Create directory
-        boost::filesystem::path dir(vfhs_dir + "/" + objects[i]);
+        for (size_t i = 0; i < objects[color].size(); i++) {
+            std::cout << "Processing [" << (i+1) << "/" << objects[color].size() << "]: " << color << " " << objects[color][i] << std::endl;
+
+            // Create directory
+            boost::filesystem::path dir(vfhs_dir + "/" + color + "/" + objects[color][i]);
+            boost::filesystem::remove_all(dir); // Remove first so we can add new!
+            boost::filesystem::create_directories(dir);
+
+            std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> views;
+
+            loadViews(views, color, objects[color][i]);
+
+            // For each view calculate CVFH
+            for (size_t j = 0; j < views.size(); j++) {
+                std::cout << "Processing view " << (j+1) << " of " << views.size() << std::endl;
+                pcl::PointCloud<pcl::VFHSignature308>::Ptr vfhs (new pcl::PointCloud<pcl::VFHSignature308>);
+
+                pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_xyz (new pcl::PointCloud<pcl::PointXYZ>);
+                cloud_xyz->points.resize(views[j]->size());
+                for (size_t p = 0; p < cloud_xyz->points.size(); p++) {
+                    cloud_xyz->points[p].x = views[j]->points[p].x;
+                    cloud_xyz->points[p].y = views[j]->points[p].y;
+                    cloud_xyz->points[p].z = views[j]->points[p].z;
+                }
+
+                VFHHelper::computeVFHSignature(vfhs, cloud_xyz, normalRadiusSearch, normalizeBins, EPSAngle, maxCurv);
+
+                // Save VFH signature to file
+                // TODO: Maybe save pose too?!
+                // Save and use the views name instead?!
+                pcl::io::savePCDFileBinary(vfhs_dir + "/" + color + "/" + objects[color][i] + "/" + boost::lexical_cast<std::string>(j) + vfhs_extension, *vfhs);
+            }
+        }
+
+        // Load all histograms of all models
+        std::vector<vfh_model> models;
+        loadVFHModels(models, color);
+
+        // Convert data into FLANN format
+        flann::Matrix<float> data (new float[models.size() * models[0].second.size()], models.size(), models[0].second.size());
+
+        for (size_t i = 0; i < data.rows; i++) {
+            for (size_t j = 0; j < data.cols; j++) {
+                data[i][j] = models[i].second[j];
+            }
+        }
+
+        // Save data to disk (list of models)
+        boost::filesystem::path dir(training_dir + "/" + color);
         boost::filesystem::remove_all(dir); // Remove first so we can add new!
         boost::filesystem::create_directories(dir);
+        flann::save_to_file (data, training_dir + "/" + color + "/" + training_data_h5_file_name, "training_data");
 
-        std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> views;
-
-        loadViews(views, objects[i]);
-
-        // For each view calculate CVFH
-        for (size_t j = 0; j < views.size(); j++) {
-            std::cout << "Processing view " << (j+1) << " of " << views.size() << std::endl;
-            pcl::PointCloud<pcl::VFHSignature308>::Ptr vfhs (new pcl::PointCloud<pcl::VFHSignature308>);
-
-            PointCloudHelper::resizePoints(views[j], views[j], pointSize[0], pointSize[1], pointSize[2]);
-
-            pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_xyz (new pcl::PointCloud<pcl::PointXYZ>);
-            cloud_xyz->points.resize(views[j]->size());
-            for (size_t p = 0; p < cloud_xyz->points.size(); p++) {
-                cloud_xyz->points[p].x = views[j]->points[p].x;
-                cloud_xyz->points[p].y = views[j]->points[p].y;
-                cloud_xyz->points[p].z = views[j]->points[p].z;
-            }
-
-            VFHHelper::computeVFHSignature(vfhs, cloud_xyz, normalRadiusSearch, normalizeBins, EPSAngle, maxCurv);
-
-            // Save VFH signature to file
-            // TODO: Maybe save pose too?!
-            // Save and use the views name instead?!
-            pcl::io::savePCDFileASCII(vfhs_dir + "/" + objects[i] + "/" + boost::lexical_cast<std::string>(j) + vfhs_extension, *vfhs);
+        std::ofstream fs;
+        fs.open ((training_dir + "/" + color + "/" + training_data_list_file_name).c_str());
+        for (size_t i = 0; i < models.size (); i++) {
+          fs << models[i].first << "\n";
         }
+        fs.close ();
+
+        // Build the tree index and save it to disk
+        flann::Index<flann::ChiSquareDistance<float> > index (data, flann::LinearIndexParams());
+        //flann::Index<flann::ChiSquareDistance<float> > index (data, flann::KDTreeIndexParams (4));    // Faster but only approximative
+
+        index.buildIndex();
+        index.save(training_dir + "/" + color + "/" + kdtree_idx_file_name);
     }
-
-    // Load all histograms of all models
-    std::vector<vfh_model> models;
-    loadVFHModels(models);
-
-    // Convert data into FLANN format
-    flann::Matrix<float> data (new float[models.size() * models[0].second.size()], models.size(), models[0].second.size());
-
-    for (size_t i = 0; i < data.rows; i++) {
-        for (size_t j = 0; j < data.cols; j++) {
-            data[i][j] = models[i].second[j];
-        }
-    }
-
-    // Save data to disk (list of models)
-    boost::filesystem::path dir(training_dir);
-    boost::filesystem::remove_all(dir); // Remove first so we can add new!
-    boost::filesystem::create_directories(dir);
-    flann::save_to_file (data, training_dir + "/" + training_data_h5_file_name, "training_data");
-
-    std::ofstream fs;
-    fs.open ((training_dir + "/" + training_data_list_file_name).c_str());
-    for (size_t i = 0; i < models.size (); i++) {
-      fs << models[i].first << "\n";
-    }
-    fs.close ();
-
-    // Build the tree index and save it to disk
-    flann::Index<flann::ChiSquareDistance<float> > index (data, flann::LinearIndexParams());
-    //flann::Index<flann::ChiSquareDistance<float> > index (data, flann::KDTreeIndexParams (4));    // Faster but only approximative
-
-    index.buildIndex();
-    index.save(training_dir + "/" + kdtree_idx_file_name);
 }
 
 void getObjects() {
     boost::filesystem::path p(views_dir);
 
     for (boost::filesystem::directory_iterator i = boost::filesystem::directory_iterator(p); i != boost::filesystem::directory_iterator(); i++) {
+        std::string color = i->path().filename().string();
         if (boost::filesystem::is_directory(i->path())) {
-            std::string dirName = i->path().filename().string();
+            for (boost::filesystem::directory_iterator j = boost::filesystem::directory_iterator(i->path()); j != boost::filesystem::directory_iterator(); j++) {
+                if (boost::filesystem::is_directory(j->path())) {
+                    std::string type = j->path().filename().string();
 
-            objects.push_back(dirName);
+                    objects[color].push_back(type);
+                    /*
+                    if (objects.count(color)) {
+                        objects[color].push_back(type);
+                    } else {
+                        std::vector<std::string> temp;
+                        temp.push_back(type);
+                        objects[color] = temp;
+                    }
+                    */
+                }
+            }
         }
     }
 }

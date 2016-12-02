@@ -5,6 +5,7 @@
 #include "std_msgs/String.h"
 #include <ros/package.h>
 #include "geometry_msgs/PointStamped.h"
+#include "geometry_msgs/PolygonStamped.h"
 
 // Own
 #include "classifier.h"
@@ -61,9 +62,11 @@ std::vector<hsvColor> colors;
 std::map<std::string, std::vector<std::string> > objectTypes;
 std::vector<std::string> colorNames;
 
+hsvColor wallColor;
+
 ros::Publisher object_pub;
 ros::Publisher point_pub;
-ros::Publisher test_pub;
+ros::Publisher obstacle_pub;
 
 double transform_x;
 double transform_y;
@@ -77,15 +80,22 @@ bool normalizeBins;
 double EPSAngle;
 double maxCurv;
 
-std::vector<double> pointSize;
+std::vector<float> pointSize;
 
 double outlierMaxNeighbours, outlierStddev, clusterTolerance, minClusterSize, maxClusterSize;
 
 double lowCertaintyLimit, highCertaintyLimit;
 
-int cloudNum = 0;  // Number of clouds
+std::map<std::string, std::map<std::string, float> > certaintyLimits;
+
+Eigen::Vector3f translation;
+Eigen::Quaternionf rotation;
+
+float classifyMaxDistance;
 
 void initParams(ros::NodeHandle n) {
+    n.getParam("/classifyMaxDistance", classifyMaxDistance);
+
     n.getParam("/outlierMaxNeighbours", outlierMaxNeighbours);
     n.getParam("/outlierStddev", outlierStddev);
 
@@ -112,7 +122,12 @@ void initParams(ros::NodeHandle n) {
 
     n.getParam("/color_names", colorNames);
 
+    std::map<std::string, double> wallColorMap;
+    n.getParam("wall_color_hsv", wallColorMap);
+    wallColor = { wallColorMap["h_min"], wallColorMap["h_max"], wallColorMap["s_min"], wallColorMap["s_max"], wallColorMap["v_min"], wallColorMap["v_max"] };
+
     for (int i = 0; i < colorNames.size(); i++) {
+        // Colors
         std::map<std::string, double> color_hsv;
 
         n.getParam("/" + colorNames[i] + "_hsv", color_hsv);
@@ -123,21 +138,63 @@ void initParams(ros::NodeHandle n) {
 
 
         n.getParam("/" + colorNames[i] + "_types", objectTypes[colorNames[i]]);
+
+        // Certainties
+        std::map<std::string, float> certaintyLimit;
+        n.getParam("/" + colorNames[i] + "_certaintyLimit", certaintyLimit);
+        certaintyLimits[colorNames[i]] = certaintyLimit;
     }
 
     std::string whatTypeOfData;
     n.getParam("/whatTypeOfData", whatTypeOfData);
 
     training_dir = ros::package::getPath("classifier") + "/Data/Training/" + whatTypeOfData;
+
+
+    double transform_x;
+    double transform_y;
+    double transform_z;
+    double transform_yaw;
+    double transform_roll;
+    double transform_pitch;
+
+    n.getParam("/translation/x", transform_x);
+    n.getParam("/translation/y", transform_y);
+    n.getParam("/translation/z", transform_z);
+    n.getParam("/rotation/yaw", transform_yaw);
+    n.getParam("/rotation/roll", transform_roll);
+    n.getParam("/rotation/pitch", transform_pitch);
+
+    translation << transform_y, -transform_z, transform_x;
+
+    double yaw = transform_yaw * PI / 180.0;
+    double roll = -transform_roll * PI / 180.0;
+    double pitch = transform_pitch * PI / 180.0;
+
+    double t0 = std::cos(yaw * 0.5f);
+    double t1 = std::sin(yaw * 0.5f);
+    double t2 = std::cos(roll * 0.5f);
+    double t3 = std::sin(roll * 0.5f);
+    double t4 = std::cos(pitch * 0.5f);
+    double t5 = std::sin(pitch * 0.5f);
+
+    double w = t0 * t2 * t4 + t1 * t3 * t5;
+    double x = t0 * t3 * t4 - t1 * t2 * t5;
+    double y = t0 * t2 * t5 + t1 * t3 * t4;
+    double z = t1 * t2 * t4 - t0 * t3 * t5;
+
+    Eigen::Quaternionf rotationTemp(w, x, y, z);
+
+    rotation = rotationTemp;
 }
 
 /** \brief Load the list of file model names from an ASCII file
   * \param models the resultant list of model name
   * \param filename the input file name
   */
-bool loadFileList (std::vector<vfh_model> &models) {
+bool loadFileList (std::vector<vfh_model> &models, std::string color) {
   ifstream fs;
-  fs.open ((training_dir + "/" + training_data_list_file_name).c_str());
+  fs.open ((training_dir + "/" + color + "/" + training_data_list_file_name).c_str());
   if (!fs.is_open () || fs.fail ())
     return (false);
 
@@ -193,7 +250,7 @@ void generateHistogram(vfh_model & vfh, pcl::PointCloud<pcl::PointXYZ>::Ptr & cl
     generateHistogram(vfh, vfhs);
 }
 
-void classify(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud, std::vector<std::pair<std::string, float> > & candidates) {
+void classify(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud, std::vector<std::pair<std::string, float> > & candidates, std::string color) {
 
 
     // Place the object in the center
@@ -218,8 +275,8 @@ void classify(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud, std::vector<std::pair
     flann::Matrix<float> k_distances;
     flann::Matrix<float> data;
 
-    loadFileList(models);
-    flann::load_from_file(data, training_dir + "/training_data.h5", "training_data");
+    loadFileList(models, color);
+    flann::load_from_file(data, training_dir + "/" + color + "/" + training_data_h5_file_name, "training_data");
 
     vfh_model histogram;
     //loadVFHModel(histogram, "Cube", "5"); // TODO
@@ -228,7 +285,7 @@ void classify(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud, std::vector<std::pair
 
 
 
-    flann::Index<flann::L1<float> > index (data, flann::SavedIndexParams(training_dir + "/kdtree.idx"));
+    flann::Index<flann::L1<float> > index (data, flann::SavedIndexParams(training_dir + "/" + color + "/" + kdtree_idx_file_name));
     index.buildIndex();
     k = index.size(); // TODO: is this good?!
     nearestKSearch(index, histogram, k, k_indices, k_distances);
@@ -245,7 +302,22 @@ void classify(pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud, std::vector<std::pair
     //return candidates;
 }
 
+float getObjectDistance(pcl_rgb::Ptr cloud_in) {
+    pcl_rgb::Ptr cloud_transformed (new pcl_rgb);
+    pcl::transformPointCloud(*cloud_in, *cloud_transformed, translation, rotation);
+
+    pcl::PointXYZRGB min_p, max_p;
+
+    pcl::getMinMax3D(*cloud_transformed, min_p, max_p);
+
+    return max_p.x;
+}
+
 std::pair<std::string, float> classify(pcl_rgb::Ptr cloud_in, std::string color) {
+    if (getObjectDistance(cloud_in) > classifyMaxDistance) {
+        return std::make_pair<std::string, float>("nope", 9999999999);
+    }
+
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_xyz (new pcl::PointCloud<pcl::PointXYZ>);
 
     cloud_xyz->points.resize(cloud_in->points.size());
@@ -257,12 +329,12 @@ std::pair<std::string, float> classify(pcl_rgb::Ptr cloud_in, std::string color)
 
     std::vector<std::pair<std::string, float> > candidates;
 
-    classify(cloud_xyz, candidates);
+    classify(cloud_xyz, candidates, color);
 
     std::string object = "nope";
     size_t i = 0;
     for (; i < candidates.size(); i++) {
-        if (candidates[i].second > highCertaintyLimit) {
+        if (candidates[i].second > certaintyLimits.at(color).at(candidates[i].first)) {
             return std::make_pair<std::string, float>("nope", candidates[i].second); // We are too unsure to even know if it is an object
         }
 
@@ -282,7 +354,7 @@ std::pair<std::string, float> classify(pcl_rgb::Ptr cloud_in, std::string color)
         return std::make_pair<std::string, float>("nope", candidates[i].second); // We are too unsure to even know if it is an object
     }
 
-    if (candidates[i].second > lowCertaintyLimit) {
+    if (candidates[i].second > certaintyLimits.at(color).at(candidates[i].first)) {
         object = "object";    // Too unsure
     }
 
@@ -330,42 +402,11 @@ classifier::Object getOptimalPickupPoint(pcl_rgb::Ptr & cloud_in) {
     return point;
 }
 
-void findObjects(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr & input_cloud, std::vector<foundObject> & foundObjects) {
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr filtered_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
-
-    PointCloudHelper::resizePoints(input_cloud, filtered_cloud, pointSize[0], pointSize[1], pointSize[2]);
-
-    // Transform
-    const Eigen::Vector3f translation(transform_y, -transform_z, transform_x);
-
-    double yaw = transform_yaw * PI / 180.0;
-    //double roll = -30.0 * PI / 180.0;
-    //double roll = -42.0 * PI / 180.0;
-    double roll = -transform_roll * PI / 180.0;
-    double pitch = transform_pitch * PI / 180.0;
-
-    double t0 = std::cos(yaw * 0.5f);
-    double t1 = std::sin(yaw * 0.5f);
-    double t2 = std::cos(roll * 0.5f);
-    double t3 = std::sin(roll * 0.5f);
-    double t4 = std::cos(pitch * 0.5f);
-    double t5 = std::sin(pitch * 0.5f);
-
-    double w = t0 * t2 * t4 + t1 * t3 * t5;
-    double x = t0 * t3 * t4 - t1 * t2 * t5;
-    double y = t0 * t2 * t5 + t1 * t3 * t4;
-    double z = t1 * t2 * t4 - t0 * t3 * t5;
-
-    //std::cout << "w: " << w << "\tx: " << x << "\ty: " << y << "\tz: " << z << std::endl;
-
-    Eigen::Quaternionf rotation(w, x, y, z);
-
-    //pcl::transformPointCloud(*filtered_cloud, *filtered_cloud, translation, rotation);
-
+void findObjects(pcl::PointCloud<pcl::PointXYZRGB>::Ptr & input_cloud, std::vector<foundObject> & foundObjects) {
     std::vector<std::string> detectedObjects;
     // Find the color objects
     for (int i = 0; i < colors.size(); i++) {
-        std::vector<pcl_rgb::Ptr> objects = PointCloudHelper::getObjects(filtered_cloud, colors[i], outlierMaxNeighbours, outlierStddev, clusterTolerance, minClusterSize, maxClusterSize);
+        std::vector<pcl_rgb::Ptr> objects = PointCloudHelper::getObjects(input_cloud, colors[i], outlierMaxNeighbours, outlierStddev, clusterTolerance, minClusterSize, maxClusterSize);
 
         for (size_t j = 0; j < objects.size(); j++) {
             // Classify
@@ -412,6 +453,8 @@ bool classifyService(classifier::Find_Object::Request & req, classifier::Find_Ob
     pcl_conversions::toPCL(req.cloud, pcl_pc2);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::fromPCLPointCloud2(pcl_pc2, *cloud);
+
+    PointCloudHelper::preProcess(cloud, translation, rotation, pointSize, wallColor);
 
     std::vector<foundObject> objects;
     findObjects(cloud, objects);
@@ -469,41 +512,164 @@ bool classifyService(classifier::Find_Object::Request & req, classifier::Find_Ob
     res.header.frame_id = "wheel_center";
     res.header.stamp = ros::Time();
 
+    std::cout << "Cloud size: " << cloud->size() << std::endl;
+
     return true;
 }
 
-
 void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input_cloud) {
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+
+    *cloud = *input_cloud;
+
+    PointCloudHelper::preProcess(cloud, translation, rotation, pointSize, wallColor);
+
+    pcl::io::savePCDFileBinary(training_dir + "/test.pcd", *cloud);
+
+    // Colored objects
+    for (size_t i = 0; i < colors.size(); i++) {
+        // Get objects
+        std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> objects = PointCloudHelper::getObjects(cloud, colors[i], outlierMaxNeighbours, outlierStddev, clusterTolerance, minClusterSize, maxClusterSize);
+
+        for (size_t j = 0; j < objects.size(); j++) {
+            // Classify
+            // Type, certainty
+            std::pair<std::string, float> objectType = classify(objects[j], colorNames[i]);
+            if (objectType.first == "nope") {
+                // Could not classify this object!
+                std::cout << objectType.second << std::endl;
+                continue;
+            }
+
+            pcl::transformPointCloud(*objects[j], *objects[j], translation, rotation);
+            pcl::PointXYZ optimalPickupPoint = PointCloudHelper::getOptimalPickupPoint(objects[j], objectType.first);
+
+            if (objectType.first == "star" && colorNames[i].substr(0, colorNames[i].find("_")) == "orange") {
+                objectType.first = "patric";
+            }
+
+            classifier::Object object;
+            object.x = optimalPickupPoint.x;
+            object.y = optimalPickupPoint.y;
+            object.z = optimalPickupPoint.z;
+
+            std::string temp;
+            if (objectType.first != "patric") {
+                temp = colorNames[i].substr(0, colorNames[i].find("_")) + " ";
+                std::cout << colorNames[i].substr(0, colorNames[i].find("_")) << " ";
+            }
+            //detectedObjects.push_back(temp + objectType.first);
+            std::cout << objectType.first << " (" << objectType.second << ") at: " << "X: " << object.x << ", Y: " << object.y << ", Z: " << object.z <<  std::endl;
+
+
+            object.color = colorNames[i].substr(0, colorNames[i].find("_"));
+            object.type = objectType.first;
+
+
+            object_pub.publish(object);
+        }
+    }
+
+    // Obstacles
+
+    // Transform
+    pcl::transformPointCloud(*cloud, *cloud, translation, rotation);
+
+    // TODO: maybe different values for these objects since they are larger
+    // Segmentation
+    std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> objects = PointCloudHelper::segmentation(cloud, clusterTolerance, minClusterSize, maxClusterSize);
+
+    pcl::PointXYZ minX, maxX, minY, maxY;
+    for (size_t i = 0; i < objects.size(); i++) {
+        pcl::PointXYZRGB min_p, max_p;
+
+        pcl::getMinMax3D(*objects[i], min_p, max_p);
+
+        if (true) {
+            // Naive
+            geometry_msgs::PolygonStamped poly;
+
+            geometry_msgs::Point32 point[2];
+
+            point[0].x = min_p.z;
+            point[0].y = min_p.x;
+            point[1].x = max_p.z;
+            point[1].y = max_p.x;
+
+            poly.polygon.points.push_back(point[0]);
+            poly.polygon.points.push_back(point[1]);
+
+            // Publish x = z and y = x
+            obstacle_pub.publish(poly);
+        } else {
+            // Advanced
+            float min, max;
+            float height = max_p.y - min_p.y;
+            if (height > 0.02) {
+                min = min_p.y + (height/2.0) - 0.005;
+                max = max_p.y - (height/2.0) + 0.005;
+            } else {
+                // TODO: Make better
+                max = max_p.y;
+                min = min_p.y;
+            }
+
+            pcl::PassThrough<pcl::PointXYZRGB> pass;
+            pass.setInputCloud (objects[i]);
+            pass.setFilterFieldName ("y");
+            pass.setFilterLimits (max, min);
+            pass.filter(*objects[i]);
+
+            // Find line
+            std::vector<std::pair<geometry_msgs::Point32, geometry_msgs::Point32> > lines;
+            for (size_t p = 0; p < objects[i]->size(); p++) {
+                geometry_msgs::Point32 newPoint;
+                newPoint.x = objects[i]->points[p].z;
+                newPoint.y = objects[i]->points[p].x;
+
+                bool added = false;
+
+                for (size_t j = 0; j < lines.size(); j++) {
+                    if (lines[j].first.x == lines[j].second.x && lines[j].first.y == lines[j].second.y) {
+                        // This only has a start
+                        lines[j] = std::make_pair<geometry_msgs::Point32, geometry_msgs::Point32>(lines[j].first, newPoint);
+                        added = true;
+                        break;
+                    } else {
+                        // TODO: Check if the angel is too high!
+
+                    }
+                }
+
+                if (!added) {
+                    lines.push_back(std::make_pair<geometry_msgs::Point32, geometry_msgs::Point32>(newPoint, newPoint));
+                }
+            }
+
+            for (size_t j = 0; j < lines.size(); j++) {
+                if (lines[j].first.x == lines[j].second.x && lines[j].first.y == lines[j].second.y) {
+                    continue;
+                }
+
+                geometry_msgs::PolygonStamped poly;
+
+                poly.polygon.points.push_back(lines[j].first);
+                poly.polygon.points.push_back(lines[j].second);
+
+                obstacle_pub.publish(poly);
+            }
+        }
+    }
+}
+
+
+void pointCloudCallback2(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input_cloud) {
     // Filtering input scan to increase speed of registration.
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr filtered_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
 
     PointCloudHelper::resizePoints(input_cloud, filtered_cloud, pointSize[0], pointSize[1], pointSize[2]);
 
     // Transform
-    const Eigen::Vector3f translation(transform_y, -transform_z, transform_x);
-
-    double yaw = transform_yaw * PI / 180.0;
-    //double roll = -30.0 * PI / 180.0;
-    //double roll = -42.0 * PI / 180.0;
-    double roll = -transform_roll * PI / 180.0;
-    double pitch = transform_pitch * PI / 180.0;
-
-    double t0 = std::cos(yaw * 0.5f);
-    double t1 = std::sin(yaw * 0.5f);
-    double t2 = std::cos(roll * 0.5f);
-    double t3 = std::sin(roll * 0.5f);
-    double t4 = std::cos(pitch * 0.5f);
-    double t5 = std::sin(pitch * 0.5f);
-
-    double w = t0 * t2 * t4 + t1 * t3 * t5;
-    double x = t0 * t3 * t4 - t1 * t2 * t5;
-    double y = t0 * t2 * t5 + t1 * t3 * t4;
-    double z = t1 * t2 * t4 - t0 * t3 * t5;
-
-    //std::cout << "w: " << w << "\tx: " << x << "\ty: " << y << "\tz: " << z << std::endl;
-
-    Eigen::Quaternionf rotation(w, x, y, z);
-
     //pcl::transformPointCloud(*filtered_cloud, *filtered_cloud, translation, rotation);
 
     std::vector<std::string> detectedObjects;
@@ -539,7 +705,6 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
 
             object.color = colorNames[i].substr(0, colorNames[i].find("_"));
             object.type = objectType.first;
-            object.cloudNum = cloudNum; // Used for testing
 
             // Output
 
@@ -581,7 +746,8 @@ int main(int argc, char **argv) {
     ros::Subscriber point_sub = nh.subscribe("camera/depth_registered/points", 1, pointCloudCallback);
 
     object_pub = nh.advertise<classifier::Object> ("objectPos_wheelcenter2", 1);
-    point_pub = nh.advertise<geometry_msgs::PointStamped> ("objectPos_wheelcenter", 1);
+    //point_pub = nh.advertise<geometry_msgs::PointStamped> ("objectPos_wheelcenter", 1);
+    obstacle_pub = nh.advertise<geometry_msgs::PolygonStamped> ("obstaclePos_wheelcenter", 1);
 
     ros::ServiceServer service = nh.advertiseService("find_object", classifyService);
 

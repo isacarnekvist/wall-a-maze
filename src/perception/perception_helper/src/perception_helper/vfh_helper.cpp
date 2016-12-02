@@ -24,7 +24,7 @@ namespace VFHHelper {
         // Use all neighbors in a sphere of radius 3cm
         ne.setRadiusSearch (radiusSearch);
 
-        ne.setViewPoint (std::numeric_limits<float>::max (), std::numeric_limits<float>::max (), std::numeric_limits<float>::max ());
+        ne.setViewPoint (0, 0, 0); //std::numeric_limits<float>::max (), std::numeric_limits<float>::max (), std::numeric_limits<float>::max ());
 
         // Compute the features
         ne.compute (*cloud_normals);
@@ -63,7 +63,7 @@ namespace VFHHelper {
 
         //cvfh.setUseGivenNormal(true);
         //cvfh.setFillSizeComponent(true);
-        cvfh.setViewPoint (std::numeric_limits<float>::max (), std::numeric_limits<float>::max (), std::numeric_limits<float>::max ());
+        cvfh.setViewPoint (0, 0, 0); //std::numeric_limits<float>::max (), std::numeric_limits<float>::max (), std::numeric_limits<float>::max ());
 
         cvfh.compute(*vfhs);
     }
