@@ -1,22 +1,6 @@
 <launch>
   	<!-- export ROS_MASTER_URI=http://192.168.1.206:11311 -->
 
-	<!-- Left Motor -->
-	<node name="left_motor" pkg="phidgets" type="motor" args="_serial:=473027 __name:=left_motor _name:=left_motor _frequency:=125" >
-		<param name="_serial" value="473027" />
-		<param name="__name" value="left_motor" />
-		<param name="_name" value="left_motor" />
-		<param name="_frequency" value="125" />
-	</node>
-
-	<!-- Right Motor -->
-	<node name="right_motor" pkg="phidgets" type="motor" args="_serial:=475396 __name:=right_motor _name:=right_motor _frequency:=125" >
-		<param name="_serial" value="475396" />
-		<param name="__name" value="right_motor" />
-		<param name="_name" value="right_motor" />
-		<param name="_frequency" value="125" />
-	</node>
-
 	<!-- Odometry -->
 	<include file="$(find odometry)/launch/odometry.launch"/>
 	
