@@ -23,7 +23,9 @@ class BoobyDetection():
         self.listener = tf.TransformListener()
         self.listener.waitForTransform("wheel_center", "camera", rospy.Time(), rospy.Duration(4.0))
 
-        self.qr_position = PointStamped()
+        self.qr_position = Point()
+        self.booby_detected = False
+        self.booby_z = 0.13
 
         rospy.spin()
 
@@ -31,12 +33,16 @@ class BoobyDetection():
     def visp_callback(self,data):
     	
         if data.pose.position.z < 0.01:
+            self.booby_detected = False
             return
+
+        self.booby_detected = True
 
     	qr_pose_camera = data
     	qr_pose_camera.header.frame_id = 'camera'
     	qr_pose_wheel = self.transform_cameraToWheel(qr_pose_camera)
 
+        self.qr_position = qr_pose_wheel.pose.position
         # Should not happen?
         if qr_pose_wheel == None:
             return
@@ -65,7 +71,7 @@ class BoobyDetection():
         print("The qr code position is at {}".format(qr_pose_wheel.pose.position))
         print("The pickup location is at {}".format(qr_pickup.point))
         
-        self.booby_publish.publish(qr_pickup)
+        #self.booby_publish.publish(qr_pickup)
 
 
     def transform_cameraToWheel(self, data):
@@ -78,16 +84,42 @@ class BoobyDetection():
         return data_wheel
 
     def laser_callback(self, scans):
-        new_scans = []
-        for angle in range(180, 360):
-            alpha = np.pi * (angle + 88.5) / 180.0
-            dist = scans.ranges[angle]
-            if dist == np.inf:
-                continue
-            x = np.cos(alpha) * dist + 0.08
-            y = np.sin(alpha) * dist + 0.009
-            new_scans.append((x, y))
-        self.scans = new_scans
+        if self.booby_detected:
+            new_scans = []
+            for angle in range(180, 360):
+                alpha = np.pi * (angle + 88.5) / 180.0
+                dist = scans.ranges[angle]
+                if dist == np.inf:
+                    continue
+                x = np.cos(alpha) * dist + 0.08
+                y = np.sin(alpha) * dist + 0.009
+                new_scans.append((x, y))
+
+            yTol = 0.06
+            x_sum = 0
+            y_sum = 0
+            num_scans = 0.0
+            # Add filtering on x
+            booby_pickup = []
+            for scan in new_scans:
+                print("Scan has x value".format(scan[0]))
+                print("Scan has y value".format(scan[1]))
+                if np.abs(scan[1]-self.qr_position.y) < yTol:
+                    booby_pickup.append(scan)
+                    x_sum += scan[0]
+                    y_sum += scan[1]
+                    num_scans += 1.0
+
+            booby_x = x_sum/num_scans
+            booby_y = y_sum/num_scans   # Note: Might be causing errors due to zero crossing
+
+            booby_publish.publish(Point(booby_x,booby_y,self.booby_z))
+
+        
+
+
+
+
 
 if __name__ == "__main__":
     BoobyDetection()
