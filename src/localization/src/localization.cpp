@@ -14,6 +14,7 @@
 #include <geometry_msgs/Polygon.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
+#include <localization/ResetMap.h>
 #include <localization/AddPickable.h>
 #include <localization/RemovePickable.h>
 #include <planner/PlannerStatus.h>
@@ -43,6 +44,8 @@ public:
                       localization::AddPickable::Response &res);
     bool remove_pickable(localization::RemovePickable::Request &req,
                          localization::RemovePickable::Response &res);
+    bool reset_map(localization::ResetMap::Request &req,
+                   localization::ResetMap::Response &res);
     ParticleFilter *particle_filter; /* Doesn't work without '*' and new */
 private:
     vector<tuple<float, float> > scans;
@@ -273,6 +276,13 @@ bool Localization::remove_pickable(localization::RemovePickable::Request &req,
     return true;
 }
 
+bool Localization::reset_map(localization::ResetMap::Request &req,
+                             localization::ResetMap::Response &res) {
+    map = Map();
+    publish_updated_obstacles();
+    return true;
+}
+
 int main(int argc, char **argv) {
     ros::init(argc, argv, "localization");
     ros::NodeHandle node_handle;
@@ -322,6 +332,12 @@ int main(int argc, char **argv) {
     ros::ServiceServer remove_pickable_server = node_handle.advertiseService(
         "/map/remove_pickable",
         &Localization::remove_pickable,
+        &localization
+    );
+
+    ros::ServiceServer reset_map_server = node_handle.advertiseService(
+        "/map/reset",
+        &Localization::reset_map,
         &localization
     );
 
