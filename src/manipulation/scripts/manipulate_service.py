@@ -100,9 +100,13 @@ class Manipulate():
 		if response == False:
 			return PickupObjectResponse(False)
 		else:
-			pickupResponse = self.pickup(request,object_type='other')
-			print("pickupResponse is {}".format(pickupResponse))
-			return PickupObjectResponse(pickupResponse)	# Modify later
+			if request.doPickup:
+				pickupResponse = self.pickup(request,object_type='other')
+				print("pickupResponse is {}".format(pickupResponse))
+				return PickupObjectResponse(pickupResponse)	# Modify later
+        	
+			return PickupObjectResponse(True)
+    
 	
 
 	def handle_place(self,request):
@@ -374,7 +378,7 @@ class Manipulate():
 			if object_type == 'booby':
 				objectPos = self.booby_position
 				if not self.booby_detected:
-					print("Object no longer in sight.")
+					print("Trap no longer in sight.")
 					return False
 					break				
 			else:
@@ -401,6 +405,7 @@ class Manipulate():
 			aboveGoal_pos = Point(pickupPos_arm.x, pickupPos_arm.y, pickupPos_arm.z + 4.0) #correct 6, include in param file	
 		
 			aboveGoal_state = self.moveToPos_client(aboveGoal_pos, self.move_mode, self.moveDuration_abs, self.interpol_way)
+			print("Moved above goal")
 			if aboveGoal_state.error == True:
 				return False
 				break
@@ -425,6 +430,15 @@ class Manipulate():
 			# Turn on pump
 			self.pump_control(True)
 			
+			# Tes
+			'''
+			test = PointStamped()
+			test.point = pickupPos_arm_low
+			test.header.frame_id = 'arm'
+			test_wheel = self.transform_armToWheel(test)
+			print("Trying to pickup arm at {}".format(pickupPos_arm_low))
+			print("This means in robot frame at {}".format(test_wheel))
+			'''
 			# Move down with corrected x,y
 			atGoal_state = self.moveToPos_client(pickupPos_arm_low,self.move_mode, self.moveDuration_abs, self.interpol_way)
 			if atGoal_state.error == True:
@@ -459,7 +473,8 @@ class Manipulate():
 				self.toInitPos()
 			
 	def booby_callback(self,data):
-		if data.point.z < 0.01:
+		if data.point.z < 0.01 or data == None:
+			print("Data is none or z smaller than 0.01")
 			self.booby_detected = False
 		else:
 			self.booby_position = data	

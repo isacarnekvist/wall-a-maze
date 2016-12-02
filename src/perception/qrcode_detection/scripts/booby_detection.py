@@ -5,8 +5,10 @@ import rospy
 import tf
 import numpy as np
 
+from math import pi
 from geometry_msgs.msg import PoseStamped, PointStamped
 from std_msgs.msg import Header, String
+from sensor_msgs.msg import LaserScan
 
 
 class BoobyDetection():
@@ -17,9 +19,11 @@ class BoobyDetection():
         rospy.init_node('boobytrap_detection')
 
         rospy.Subscriber("visp_auto_tracker/object_position", PoseStamped, self.visp_callback)
-
+        rospy.Subscriber("/scan", LaserScan, self.laser_callback)
         self.listener = tf.TransformListener()
         self.listener.waitForTransform("wheel_center", "camera", rospy.Time(), rospy.Duration(4.0))
+
+        self.qr_position = PointStamped()
 
         rospy.spin()
 
@@ -45,12 +49,19 @@ class BoobyDetection():
 
     	dist_qr_to_top = 0.050
     	dist_qr_to_center = 0.050
-    	qr_pickup.point.z = qr_pose_wheel.pose.position.z + dist_qr_to_top
-        qr_pickup.point.x = qr_pose_wheel.pose.position.x + dist_qr_to_center*np.sin(euler[0])
-        qr_pickup.point.y = qr_pose_wheel.pose.position.y + dist_qr_to_center*np.cos(euler[0])
-        
 
-    	print("The euler angles in wheel_center are {}".format(euler))
+        # Hack first euler angle
+        euler_corrected = euler[0]# + 40.0 * pi/180.0
+    	qr_pickup.point.z = qr_pose_wheel.pose.position.z + dist_qr_to_top
+        qr_pickup.point.x = qr_pose_wheel.pose.position.x - dist_qr_to_center*np.cos(euler_corrected)
+        qr_pickup.point.y = qr_pose_wheel.pose.position.y + dist_qr_to_center*np.sin(euler_corrected)
+        
+        euler_degree = list(euler)
+
+        for i,x in enumerate(euler):
+            euler_degree[i] = x * 180.0 / pi
+
+    	print("The first euler angle in wheel_center is {}".format(euler_corrected * 180.0 /pi))
         print("The qr code position is at {}".format(qr_pose_wheel.pose.position))
         print("The pickup location is at {}".format(qr_pickup.point))
         
@@ -65,6 +76,18 @@ class BoobyDetection():
             return
 
         return data_wheel
+
+    def laser_callback(self, scans):
+        new_scans = []
+        for angle in range(180, 360):
+            alpha = np.pi * (angle + 88.5) / 180.0
+            dist = scans.ranges[angle]
+            if dist == np.inf:
+                continue
+            x = np.cos(alpha) * dist + 0.08
+            y = np.sin(alpha) * dist + 0.009
+            new_scans.append((x, y))
+        self.scans = new_scans
 
 if __name__ == "__main__":
     BoobyDetection()
