@@ -47,7 +47,7 @@
 	<!--include file="$(find phidgets_imu)/launch/imu.launch"/-->
 
 	<!-- Vision -->
-	<!--include file="$(find classifier)/launch/classifier.launch"/-->
+	<include file="$(find classifier)/launch/classifier.launch"/>
 
         <!-- Booby trap detection -->
         <include file="$(find qrcode_detection)/launch/qr.launch"/>    

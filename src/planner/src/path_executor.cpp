@@ -207,8 +207,8 @@ bool PathController::line_control(LinePlan &lp) {
         }
     }
     float side_k = 12.0;
-    float left_factor = 2 - 2 / (1 + exp(-side_k * left_min));
-    float right_factor = 2 - 2 / (1 + exp(-side_k * right_min));
+    float left_factor = 1 - 1 / (1 + exp(-side_k * left_min));
+    float right_factor = 1 - 1 / (1 + exp(-side_k * right_min));
     float front_factor = 2 / (1 + exp(-6 * closest_front)) - 1;
     float linear = max(MAX_LINEAR_SPEED * target_close_factor * front_factor, 0.1);
     float angular = 0.8 * sinus_error + 0.3 * theta_error + right_factor - left_factor;
@@ -350,7 +350,18 @@ void PathController::stop_motors() {
 }
 
 void PathController::execute_callback(const planner::PlannerTargetGoal::ConstPtr &msg) {
+    cerr << "[path_executor] got target: "
+         << msg->x << ", "
+         << msg->y
+         << " bool executing_plan = " << executing_plan
+         << " bool cancel_action = " << (int)msg->cancel_action
+         << endl;
     ros::Rate r (128);
+    if (msg->cancel_action) {
+        executing_plan = false;
+        server.setSucceeded();
+        return;
+    }
     while (executing_plan && ros::ok()) {
         r.sleep();
     }
@@ -375,7 +386,7 @@ void PathController::execute_callback(const planner::PlannerTargetGoal::ConstPtr
         srv.response.plan.points[0].y
     );
     if (n_sections == 1) {
-        current_line_plan.ignore_target_theta = false;
+        current_line_plan.ignore_target_theta = msg->ignore_target_theta;
         current_line_plan.target_theta = msg->theta;
     }
 
@@ -412,7 +423,7 @@ void PathController::execute_callback(const planner::PlannerTargetGoal::ConstPtr
                     srv.response.plan.points[current_section].x,
                     srv.response.plan.points[current_section].y,
                     msg->theta,
-                    false
+                    msg->ignore_target_theta
                 );
             } else {
                 /* Next segment */
