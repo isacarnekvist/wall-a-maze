@@ -133,7 +133,7 @@ int main(int argc, char **argv) {
     int error = 0;
     std::vector<objectTypeAndLocation> wronglyClassified;
     std::vector<std::vector<objectTypeAndLocation> > classifiedAs;
-    for (size_t i = 0; i < objectLocations.size(); i++) {
+    for (size_t i = 0; i < objectLocations.size() && ros::ok(); i++) {
         std::cout << "Testing " << (i+1) << " of " << objectLocations.size() << std::endl;
 
         pcl_rgb::Ptr cloud (new pcl_rgb);
@@ -147,6 +147,11 @@ int main(int argc, char **argv) {
 
         if (client.call(srv)) {
             if (srv.response.color.size() == 0) {
+                if (objectLocations[i].color == "none") {
+                    right++;
+                    std::cout << textColor::green << "Correctly not classified: " << objectLocations[i].color << " " << objectLocations[i].type << textColor::white << std::endl;
+                    continue;
+                }
                 none++;
                 std::cout << textColor::yellow << "No classification recieved for: " << objectLocations[i].color << " " << objectLocations[i].type << textColor::white << std::endl;
                 wronglyClassified.push_back(objectLocations[i]);

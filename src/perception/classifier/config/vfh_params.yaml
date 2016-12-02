@@ -1,7 +1,8 @@
 # Compute Normals
-radiusSearch: 0.01
+radiusSearch: 0.005
 
 # Compute VFH Signature
-normalizeBins: true
+# No normalize because size matters! Triangle can become cube and vice versa otherwise
+normalizeBins: false
 EPSAngle: 5.0 / 180.0 + pi
 maxCurv: 1.0
