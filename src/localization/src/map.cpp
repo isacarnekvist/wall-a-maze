@@ -11,12 +11,25 @@ using namespace std;
 
 Map::Map() {
     walls = vector<Wall>();
-    pickable_objects = vector<PickableObject>();
+    pickable_objects = map<int, PickableObject>();
     this->min_x = INF;
     this->max_x = -INF;
     this->min_y = INF;
     this->max_y = -INF;
     readWalls();
+}
+
+int Map::add_pickable(float x, float y) {
+    pickable_objects[next_pickable_id] = (PickableObject) {
+        .x = x,
+        .y = y
+    };
+    next_pickable_id++;
+    return next_pickable_id - 1;
+}
+
+void Map::remove_pickable(int id) {
+    pickable_objects.erase(id);
 }
 
 float Map::distance(float x0, float y0, float angle) const {

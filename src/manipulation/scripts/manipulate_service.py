@@ -19,11 +19,18 @@ from classifier.srv import *
 class Manipulate():
 
 	def __init__(self):
+
+		# Global variables
+		self.booby_position = PointStamped()
+		self.booby_detected = False
+
 		self.wheels_pub = rospy.Publisher('motor_controller', Twist, queue_size=10)
 		#self.state_pub = rospy.Publisher('manipulation_state', String, queue_size=10) 
 		
 		rospy.init_node('manipulation_server')
 		 
+		rospy.Subscriber("/perception/trap_position",PointStamped,self.booby_callback)
+
 		# Wait for transform
 		self.listener = tf.TransformListener()
 		self.listener.waitForTransform("wheel_center", "uarm", rospy.Time(), rospy.Duration(8.0))
@@ -31,15 +38,9 @@ class Manipulate():
 		# Wait for move, move_joints, pump and inverse kinematics service
 		rospy.wait_for_service('/uarm/move_to')
 		self.moveTo_service = rospy.ServiceProxy('/uarm/move_to', MoveTo)
-		
-		rospy.wait_for_service('/uarm/move_to_joints')
-		self.moveToJoints_service = rospy.ServiceProxy('/uarm/move_to_joints', MoveToJoints)
 	
 		rospy.wait_for_service('/uarm/pump')
 		self.pump_service = rospy.ServiceProxy('/uarm/pump',Pump)
-		
-		rospy.wait_for_service('/uarm/convert_to_joints')
-		self.joint_service = rospy.ServiceProxy('/uarm/convert_to_joints', ConvertToJoints)
 		
 		#-- Variables --#
 		
@@ -72,11 +73,11 @@ class Manipulate():
 
 		# Services
 		rospy.Service('manipulation/pickup_object', PickupObject, self.handle_pickup)
-		#rospy.Service('manipulation/pickup_trap', PickupTrap, self.handle_pickupTrap)
+		rospy.Service('manipulation/pickup_trap', PickupTrap, self.handle_pickupTrap)
 		rospy.Service('manipulation/place_object', PlaceObject, self.handle_place)
 		rospy.Service('manipulation/carry_object', CarryObject, self.handle_carryObject)
 		rospy.Service('manipulation/drop_object', DropObject, self.handle_drop)
-		
+
 		rospy.spin()
 			
 	
@@ -84,13 +85,22 @@ class Manipulate():
 	def toInitPos(self):
 		initial_state = self.moveToPos_client(self.initPos_arm, self.move_mode, self.moveDuration_abs, self.interpol_way) 
 			
+	def handle_pickupTrap(self,request):
+		response = self.rotateToBooby()
+		if response == False:
+			return PickupTrapResponse(response)
+		else:
+			pickupResponse = self.pickup(request,object_type='booby')
+			return PickupTrapResponse(pickupResponse)
+
+
 
 	def handle_pickup(self,request):
 		response = self.toPickupPos(request)
 		if response == False:
 			return PickupObjectResponse(False)
 		else:
-			pickupResponse = self.pickup(request)
+			pickupResponse = self.pickup(request,object_type='other')
 			print("pickupResponse is {}".format(pickupResponse))
 			return PickupObjectResponse(pickupResponse)	# Modify later
 	
@@ -191,6 +201,49 @@ class Manipulate():
 			print("Service call to object position failed")
 
 
+	def rotateToBooby(self):
+		move_angular = Twist()
+		yTol = 0.04
+		times_rotated = 0
+
+		while times_rotated < 10:
+			objectPos = self.booby_position
+			move_angular.angular.z = 1.0 # m/s
+			
+			# Turn opposite
+			if times_rotated > 3:
+				move_angular.angular.z = -1.0
+
+			if not self.booby_detected:
+				print("Pickup position is {}".format(objectPos.point))
+				print("Rotate")
+				self.wheels_pub.publish(move_angular)		
+				times_rotated += 1
+				print("Times rotated {}".format(times_rotated))
+				rospy.sleep(0.6)
+				self.wheels_pub.publish(Twist())
+			else:
+				print("Saw trap!")
+				while abs(objectPos.point.y) > yTol:
+					move_angular.angular.z = np.sign(objectPos.point.y)*0.8 # m/s
+					self.wheels_pub.publish(move_angular)
+					rospy.sleep(0.2)
+					self.wheels_pub.publish(Twist())
+					rospy.sleep(0.2)
+					objectPos = self.booby_position
+					if objectPos.point.z < 0.01:
+						print("Trap lost while rotating.")
+						self.wheels_pub.publish(Twist())
+						return False
+						break		
+
+				self.wheels_pub.publish(Twist())
+
+				print("Stopped rotating, object at y={}".format(self.pickupPos_wheel.y))
+				break
+				return True
+
+
 	def toPickupPos(self,request):
 		# Simple heuristic control:
 		# 1. Rotate until object in line of sight and y=0
@@ -229,9 +282,14 @@ class Manipulate():
 					move_angular.angular.z = np.sign(objectPos.point.y)*0.8 # m/s
 					self.wheels_pub.publish(move_angular)
 					rospy.sleep(0.2)
-					self.wheels_pub.publish(Twist())		
-					objectPos = rospy.wait_for_message("/objectPos_wheelcenter", PointStamped,timeout=0.4)
-					print("Y offset is {}".format(objectPos.point.y))
+					self.wheels_pub.publish(Twist())
+					rospy.sleep(0.2)
+					objectPos = self.objectPos_client(request, select=True)
+					if objectPos == False:
+						print("Object lost while rotating.")
+						self.wheels_pub.publish(Twist())
+						return False
+						break		
 
 				self.wheels_pub.publish(Twist())
 
@@ -240,8 +298,13 @@ class Manipulate():
 				while objectPos.point.x > xAim:
 					move_linear.linear.x = 0.10 # m/s
 					self.wheels_pub.publish(move_linear)
-					objectPos = rospy.wait_for_message("/objectPos_wheelcenter", PointStamped,timeout=0.4)
 					print("X offset is {}".format(objectPos.point.x))
+					objectPos = self.objectPos_client(request, select=True)
+					if objectPos == False:
+						print("Object lost while moving forward.")
+						self.wheels_pub.publish(Twist())
+						return False
+						break		
 
 				self.wheels_pub.publish(Twist())
 				print("Stopped moving forward, object at x={}".format(objectPos.point.x))
@@ -300,99 +363,108 @@ class Manipulate():
 		return newgoal
 		
 				
-	def pickup(self,request):
+	def pickup(self,request,object_type):
 		num_tries = 0
-		max_tries = 3
+		max_tries = 1
 		zTol = 0.03	# [m]
 
 		# ToDo: Add multiple probing, but see first how behaves when multiple times going down!
 
 		while num_tries < max_tries:
-
-			objectPos = self.objectPos_client(request,select=True)
-			print("It is the {}th pickup try".format(num_tries))
-
-			if objectPos == False:
-				print("Object no longer in sight!")
-				return False
-				break
+			if object_type == 'booby':
+				objectPos = self.booby_position
+				if not self.booby_detected:
+					print("Object no longer in sight.")
+					return False
+					break				
 			else:
-				pickupPos_wheelcenter = objectPos.point
-
-				# Transform to arm frame
-				pickupPos = self.transform_wheelToArm(objectPos)
-				pickupPos_arm = pickupPos.point
-			
-				# Rescale to cm
-				scale = 100.0 # meter to cm
-				pickupPos_arm.x = pickupPos_arm.x*scale	
-				pickupPos_arm.y = pickupPos_arm.y*scale
-				pickupPos_arm.z = pickupPos_arm.z*scale
-
-				aboveGoal_pos = Point(pickupPos_arm.x, pickupPos_arm.y, pickupPos_arm.z + 4.0) #correct 6, include in param file	
-			
-				aboveGoal_state = self.moveToPos_client(aboveGoal_pos, self.move_mode, self.moveDuration_abs, self.interpol_way)
-				if aboveGoal_state.error == True:
+				objectPos = self.objectPos_client(request,select=True)
+				if objectPos == False:
+					print("Object no longer in sight!")
 					return False
 					break
 
-				#print("Moved above goal", aboveGoal_state)
-				
-				# Correct position above robot
-				pickupPos_high_new = self.absoluteFromDifference(aboveGoal_pos, aboveGoal_state.position)
+			print("It is the {}th pickup try".format(num_tries))
+			
+			pickupPos_wheelcenter = objectPos.point
 
-				'''
-				aboveGoal_state = self.moveToPos_client(pickupPos_high_new, self.move_mode, self.moveDuration_abs, self.interpol_way)
+			# Transform to arm frame
+			pickupPos = self.transform_wheelToArm(objectPos)
+			pickupPos_arm = pickupPos.point
+		
+			# Rescale to cm
+			scale = 100.0 # meter to cm
+			pickupPos_arm.x = pickupPos_arm.x*scale	
+			pickupPos_arm.y = pickupPos_arm.y*scale
+			pickupPos_arm.z = pickupPos_arm.z*scale
 
-				if aboveGoal_state.error == True:
-					return False					
-					break
-				'''	
-				
-				# Modify goal pos to go to lower z
-				pickupPos_arm_low = pickupPos_high_new
-				pickupPos_arm_low.z = pickupPos_arm.z	#change when perception correct
-				
-				# Turn on pump
-				self.pump_control(True)
-				
-				# Move down with corrected x,y
-				atGoal_state = self.moveToPos_client(pickupPos_arm_low,self.move_mode, self.moveDuration_abs, self.interpol_way)
-				if atGoal_state.error == True:
-					self.pump_control(False)
-					return False					
-					break					
+			aboveGoal_pos = Point(pickupPos_arm.x, pickupPos_arm.y, pickupPos_arm.z + 4.0) #correct 6, include in param file	
+		
+			aboveGoal_state = self.moveToPos_client(aboveGoal_pos, self.move_mode, self.moveDuration_abs, self.interpol_way)
+			if aboveGoal_state.error == True:
+				return False
+				break
 
-				# Move back up
-				aboveGoal_pos.z = aboveGoal_pos.z + 4.0
-				aboveGoal_state = self.moveToPos_client(aboveGoal_pos, self.move_mode, self.moveDuration_abs, self.interpol_way)
-				
-				# Check if picked up
+			#print("Moved above goal", aboveGoal_state)
+			
+			# Correct position above object
+			pickupPos_high_new = self.absoluteFromDifference(aboveGoal_pos, aboveGoal_state.position)
+
+			'''
+			aboveGoal_state = self.moveToPos_client(pickupPos_high_new, self.move_mode, self.moveDuration_abs, self.interpol_way)
+
+			if aboveGoal_state.error == True:
+				return False					
+				break
+			'''	
+			
+			# Modify goal pos to go to lower z
+			pickupPos_arm_low = pickupPos_high_new
+			pickupPos_arm_low.z = pickupPos_arm.z	#change when perception correct
+			
+			# Turn on pump
+			self.pump_control(True)
+			
+			# Move down with corrected x,y
+			atGoal_state = self.moveToPos_client(pickupPos_arm_low,self.move_mode, self.moveDuration_abs, self.interpol_way)
+			if atGoal_state.error == True:
+				self.pump_control(False)
+				return False					
+				break					
+
+			# Move back up
+			aboveGoal_pos.z = aboveGoal_pos.z + 3.0
+			aboveGoal_state = self.moveToPos_client(aboveGoal_pos, self.move_mode, self.moveDuration_abs, self.interpol_way)
+			
+			# Check if picked up	
+			if object_type !='booby':
 				objectPos_new = self.objectPos_client(request,select=False)
 				if objectPos_new == False:
-					print("Object no longer in sight!")
+					print("Object no longer in sight after trying to pickup!")
 					self.pump_control(False)
 					self.toInitPos()
 					return False
-				
+
 				print("Object is lifted by {} m".format(objectPos_new.point.z-pickupPos_wheelcenter.z))
 
 				if (objectPos_new.point.z-pickupPos_wheelcenter.z) > zTol:
 					print("pickup returns true")
 					return True
 					break
-					
-				num_tries += 1
+			
+			num_tries += 1
 
-				if num_tries == max_tries:
-					self.pump_control(False)
-					self.toInitPos()
-
+			if num_tries == max_tries:
+				self.pump_control(False)
+				self.toInitPos()
+			
+	def booby_callback(self,data):
+		if data.point.z < 0.01:
+			self.booby_detected = False
+		else:
+			self.booby_position = data	
+			self.booby_detected = True
 		
-	
-		
-	
-
 
 if __name__ == "__main__":
 	Manipulate()

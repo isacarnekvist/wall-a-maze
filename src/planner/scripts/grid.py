@@ -7,6 +7,10 @@ from scipy.signal import convolve2d
 import networkx
 
 
+class NoPathFoundException(Exception):
+    pass
+
+
 class OccupancyGrid:
     
     def __init__(self, x_min, x_max, y_min, y_max, cell_width, padding):
@@ -135,7 +139,7 @@ def shortest_path_bfs(g, start, goal):
                 q.put(n)
                 preds[n] = c
     if c != goal:
-        raise ValueError('No path found')
+        raise NoPathFoundException()
     path = [goal]
     c = goal
     while c != start:
@@ -145,15 +149,21 @@ def shortest_path_bfs(g, start, goal):
 
 
 def euler_path_plan(x1, y1, x2, y2, grid, graph):
-    x1, y1 = grid.closest_non_occupied(x1, y1)
-    x1_ind, y1_ind = grid.coord_to_inds(x1, y1)
-    x2, y2 = grid.closest_non_occupied(x2, y2)
-    x2_ind, y2_ind = grid.coord_to_inds(x2, y2)
-    shortest_path = shortest_path_bfs(
-        graph,
-        (x1_ind, y1_ind),
-        (x2_ind, y2_ind)
-    )
+    try:
+        x1, y1 = grid.closest_non_occupied(x1, y1)
+        x1_ind, y1_ind = grid.coord_to_inds(x1, y1)
+        x2, y2 = grid.closest_non_occupied(x2, y2)
+        x2_ind, y2_ind = grid.coord_to_inds(x2, y2)
+    except IndexError:
+        return []
+    try:
+        shortest_path = shortest_path_bfs(
+            graph,
+            (x1_ind, y1_ind),
+            (x2_ind, y2_ind)
+        )
+    except NoPathFoundException:
+        return []
     a, b = 0, 1
     smoothed = []
     while b < len(shortest_path):

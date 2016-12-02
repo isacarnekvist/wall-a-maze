@@ -43,6 +43,8 @@ typedef struct LinePlan {
     bool ignore_target_theta;
     ros::Time timestamp; /* when was this last executed? */
     ros::Time deadline;  /* Can be used for actions that should execute for some duration */
+    float last_linear_velocity;
+    float estimated_distance_travelled;
 } LinePlan;
 
 /* changes angle to be in range [0, 2*pi] */
@@ -91,7 +93,7 @@ public:
     actionlib::SimpleActionServer<planner::PlannerTargetAction> server;
     LinePlan get_line_plan(float x, float y, float theta, bool ignore_theta);
     LinePlan get_line_plan(float x, float y) { return get_line_plan(x, y, 0.0, true); }
-    bool line_control(const LinePlan &lp);
+    bool line_control(LinePlan &lp);
     bool path_is_obstructed(const LinePlan &lp);
     bool updated_map;
     vector<geometry_msgs::Point32> scans;
@@ -131,7 +133,7 @@ PathController::PathController(ros::NodeHandle &node_handle) :
     executing_plan = false;
     updated_map = false;
     server.start();
-    cout << "server started" << endl;
+    cerr << "[path_executor] server started" << endl;
 }
 
 void PathController::publish_path(const planner::PathPlan &srv, int current_section) {
@@ -168,21 +170,23 @@ LinePlan PathController::get_line_plan(float target_x, float target_y, float tar
         .target_theta = normalize_angle(target_theta),
         .ignore_target_theta = ignore_theta,
         .timestamp = ros::Time::now(),
-        .deadline = ros::Time::now()
+        .deadline = ros::Time::now(),
+        .last_linear_velocity = 0.0,
+        .estimated_distance_travelled = 0.0
     };
     return res;
 }
 
-const static float MAX_LINEAR_SPEED = 0.20;
-bool PathController::line_control(const LinePlan &lp) {
+const static double MAX_LINEAR_SPEED = 0.24;
+bool PathController::line_control(LinePlan &lp) {
     /* Have we travelled far enough? */
-    if (euclidean(lp.start_x - lp.target_x, lp.start_y - lp.target_y) <= euclidean(lp.start_x - x, lp.start_y - y)) {
+    if (euclidean(lp.start_x - lp.target_x, lp.start_y - lp.target_y) - 0.04 <= euclidean(lp.start_x - x, lp.start_y - y)) {
         return true;
     }
     
     /* Adjust for angle errors */
     float distance_to_target = euclidean(lp.target_x - x, lp.target_y - y);
-    float target_close_factor = 1.8 / (1 + exp(-12 * distance_to_target)) - 1.0;
+    float target_close_factor = 1.6 / (1 + exp(-6 * distance_to_target)) - 0.6;
     float theta_error = closest_theta_adjustment(theta, atan2(lp.target_y - y, lp.target_x - x));
     float sinus_error = sin(theta_error) * distance_to_target;
 
@@ -194,7 +198,7 @@ bool PathController::line_control(const LinePlan &lp) {
         if (abs(p.y) < 0.1 && p.x > 0.0) {
             closest_front = min(closest_front, p.x);
         }
-        if (p.x > 0.0 && p.x < 0.25) {
+        if (p.x > 0.0 && p.x < 0.32) {
             if (p.y < 0) {
                 right_min = min(right_min, -p.y);
             } else {
@@ -206,46 +210,60 @@ bool PathController::line_control(const LinePlan &lp) {
     float left_factor = 2 - 2 / (1 + exp(-side_k * left_min));
     float right_factor = 2 - 2 / (1 + exp(-side_k * right_min));
     float front_factor = 2 / (1 + exp(-6 * closest_front)) - 1;
+    float linear = max(MAX_LINEAR_SPEED * target_close_factor * front_factor, 0.1);
+    float angular = 0.8 * sinus_error + 0.3 * theta_error + right_factor - left_factor;
     publish_twist(
-        0.2 * target_close_factor * front_factor,
-        0.8 * sinus_error + 0.3 * theta_error + right_factor - left_factor
+        linear,
+        angular
     );
+    /* Update expected pose estimates */
+    ros::Duration time_delta_ros = ros::Time::now() - lp.timestamp;
+    float time_delta = time_delta_ros.sec + (float)time_delta_ros.nsec / 1e9;
+    lp.estimated_distance_travelled += time_delta * lp.last_linear_velocity * cos(theta_error);
+    lp.last_linear_velocity = linear;
+    lp.timestamp = ros::Time::now();
     return false;
 }
 
 void PathController::execute_plan(LinePlan &lp) {
+    float distance_to_target;
     float theta_correction;
     const static float INITIAL_ROTATION_SPEED = 0.8;
     float time_needed;
     bool target_reached;
     switch (lp.state) {
     case INITIALIZED:
+        distance_to_target = euclidean(lp.target_x - x, lp.target_y - y);
+        if (distance_to_target < 0.05) {
+            lp.deadline = ros::Time::now() + ros::Duration(0.5);
+            lp.state = BEFORE_DONE;
+        }
         theta_correction = closest_theta_adjustment(theta, atan2(lp.target_y - y, lp.target_x - x));
         time_needed = abs(theta_correction / INITIAL_ROTATION_SPEED);
         lp.deadline = ros::Time::now() + ros::Duration(time_needed);
         lp.state = INITIAL_ROTATION;
-        cout << "Switching to state INITIAL_ROTATION" << endl;
+        cerr << "[path_executor] Switching to state INITIAL_ROTATION" << endl;
         publish_twist(0.0, sign(theta_correction) * INITIAL_ROTATION_SPEED);
         break;
     case INITIAL_ROTATION:
         if (ros::Time::now() >= lp.deadline) {
             publish_twist(0, 0);
             lp.deadline = ros::Time::now() + ros::Duration(0.8);
-            cout << "Switching to state BEFORE_LINE_EXECUTION" << endl;
+            cerr << "[path_executor] Switching to state BEFORE_LINE_EXECUTION" << endl;
             lp.state = BEFORE_LINE_EXECUTION;
         }
         break;
     case BEFORE_LINE_EXECUTION:
         if (ros::Time::now() >= lp.deadline) {
             theta_correction = closest_theta_adjustment(theta, atan2(lp.target_y - y, lp.target_x - x));
-            if (abs(theta_correction) > 0.10) {
+            if (abs(theta_correction) > 0.2) {
                 time_needed = abs(theta_correction / INITIAL_ROTATION_SPEED);
                 lp.deadline = ros::Time::now() + ros::Duration(time_needed);
                 lp.state = INITIAL_ROTATION;
-                cout << "Re-switching to state INITIAL_ROTATION" << endl;
+                cerr << "[path_executor] Re-switching to state INITIAL_ROTATION" << endl;
                 publish_twist(0.0, sign(theta_correction) * INITIAL_ROTATION_SPEED);
             } else {
-                cout << "Switching to state EXECUTING_LINE" << endl;
+                cerr << "[path_executor] Switching to state EXECUTING_LINE" << endl;
                 lp.state = EXECUTING_LINE;
             }
         }
@@ -254,7 +272,7 @@ void PathController::execute_plan(LinePlan &lp) {
         if (path_is_obstructed(lp)) {
             lp.deadline = ros::Time::now() + ros::Duration(3.0);
             publish_twist(0, 0);
-            cout << "Switching to state OBSTRUCTED" << endl;
+            cerr << "[path_executor] Switching to state OBSTRUCTED" << endl;
             lp.state = OBSTRUCTED;
             break;
         }
@@ -263,10 +281,10 @@ void PathController::execute_plan(LinePlan &lp) {
             lp.deadline = ros::Time::now() + ros::Duration(0.5);
             publish_twist(0, 0);
             if (lp.ignore_target_theta) {
-                cout << "Switching to state BEFORE_DONE, skipping TARGET_ROTATION" << endl;
+                cerr << "[path_executor] Switching to state BEFORE_DONE, skipping TARGET_ROTATION" << endl;
                 lp.state = BEFORE_DONE;
             } else {
-                cout << "Switching to state BEFORE_TARGET_ROTATION" << endl;
+                cerr << "[path_executor] Switching to state BEFORE_TARGET_ROTATION" << endl;
                 lp.state = BEFORE_TARGET_ROTATION;
             }
         }
@@ -278,7 +296,7 @@ void PathController::execute_plan(LinePlan &lp) {
             lp.deadline = ros::Time::now() + ros::Duration(time_needed);
             lp.state = INITIAL_ROTATION;
             publish_twist(0.0, sign(theta_correction) * INITIAL_ROTATION_SPEED);
-            cout << "Switching to state TARGET_ROTATION" << endl;
+            cerr << "[path_executor] Switching to state TARGET_ROTATION" << endl;
             lp.state = TARGET_ROTATION;
         }
         break;
@@ -286,13 +304,13 @@ void PathController::execute_plan(LinePlan &lp) {
         if (ros::Time::now() >= lp.deadline) {
             publish_twist(0, 0);
             lp.deadline = ros::Time::now() + ros::Duration(0.5);
-            cout << "Switching to state BEFORE_DONE" << endl;
+            cerr << "[path_executor] Switching to state BEFORE_DONE" << endl;
             lp.state = BEFORE_DONE;
         }
         break;
     case BEFORE_DONE:
         if (ros::Time::now() >= lp.deadline) {
-            cout << "Switching to state DONE" << endl;
+            cerr << "[path_executor] Switching to state DONE" << endl;
             publish_twist(0, 0);
             lp.state = DONE;
         }
@@ -301,7 +319,7 @@ void PathController::execute_plan(LinePlan &lp) {
         if (ros::Time::now() >= lp.deadline) {
             /* send obstacles to map */
             publish_seen_obstacles();
-            cout << "Switching to state WAITING_REPLAN" << endl;
+            cerr << "[path_executor] Switching to state WAITING_REPLAN" << endl;
             lp.state = WAITING_REPLAN;
         }
         break;
@@ -333,7 +351,7 @@ void PathController::stop_motors() {
 
 void PathController::execute_callback(const planner::PlannerTargetGoal::ConstPtr &msg) {
     ros::Rate r (128);
-    while (executing_plan) {
+    while (executing_plan && ros::ok()) {
         r.sleep();
     }
     executing_plan = true;
@@ -345,6 +363,12 @@ void PathController::execute_callback(const planner::PlannerTargetGoal::ConstPtr
     path_plan_client.call(srv);
 
     int n_sections = srv.response.plan.points.size();
+    if (n_sections == 0) {
+        planner::PlannerTargetResult res;
+        res.reached_target = false;
+        server.setSucceeded(res);
+        return;
+    }
     int current_section = 0;
     LinePlan current_line_plan = get_line_plan(
         srv.response.plan.points[0].x,
@@ -368,7 +392,7 @@ void PathController::execute_callback(const planner::PlannerTargetGoal::ConstPtr
             return;
         }
         if (server.isPreemptRequested()) {
-            cout << "was preempted" << endl;
+            cerr << "[path_executor] was preempted" << endl;
             stop_motors();
             server.setAborted();
             executing_plan = false;
@@ -402,7 +426,9 @@ void PathController::execute_callback(const planner::PlannerTargetGoal::ConstPtr
         r.sleep();
     }
     stop_motors();
-    server.setSucceeded();
+    planner::PlannerTargetResult res;
+    res.reached_target = true;
+    server.setSucceeded(res);
     executing_plan = false;
 }
 
@@ -421,17 +447,28 @@ void PathController::position_callback(const geometry_msgs::PoseStamped::ConstPt
 }
 
 void PathController::map_updated_callback(const std_msgs::Bool::ConstPtr &msg) {
-    cout << "Map was updated" << endl;
+    cerr << "Map was updated" << endl;
     updated_map = true;
 }
 
 bool PathController::path_is_obstructed(const LinePlan &lp) {
-    return false;
+    /* Check if x, y error too large -> rubbing/obstruction? */
+    if (lp.estimated_distance_travelled >= 1.2 * euclidean(lp.start_x - x, lp.start_y - y) + 0.2) {
+        cerr << "[path_executor] Too large linear error, obstructed or rubbing? Mapping and replanning" << endl;
+        return true;
+    }
+    float l = 0.8;
+    float w = 0.16;
+    float k = -w / l;
     float distance_to_target = euclidean(lp.target_x - x, lp.target_y - y);
     for (const geometry_msgs::Point32 &p : scans) {
         if (p.x < 0) continue;
-        if (abs(p.y) < 0.13 && p.x > 0.0 && p.x < 0.165) {
-            return true;
+        if (abs(p.y) < k * p.x + w) {
+            if (p.x + w > distance_to_target) {
+                continue;
+            } else {
+                return true;
+            }
         }
     }
     return false;
