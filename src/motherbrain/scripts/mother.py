@@ -17,7 +17,7 @@ from std_msgs.msg import String, Bool
 from sensor_msgs.msg import Image
 from ras_msgs.msg import RAS_Evidence
 #from planner.msg import PlannerTarget
-from geometry_msgs.msg import PoseStamped, PointStamped, TransformStamped, Point
+from geometry_msgs.msg import PoseStamped, PointStamped, TransformStamped, Point, polyStamped
 from localization.srv import AddPickable, RemovePickable
 
 from planner.srv import PathPlan
@@ -148,7 +148,7 @@ class Map:
 
 class DetectedObject:
 
-    def __init__(self, x, y, z, type_str, color_str):
+    def __init__(self, x, y, z, type_str=None, color_str=None):
         self.x = x
         self.y = y
         self.z = z
@@ -225,13 +225,17 @@ class Mother:
         return self.planner_client.get_result()
 
     def explore(self):
+
+        #go to the farthest point
+        print('[mother] goto returned:', self.goto(self.map.max_x, self.map.max_y))
+
         first_target = True
         rate = rospy.Rate(10)
         while not self.recieved_position and not rospy.is_shutdown():
             rate.sleep()
         
         while not rospy.is_shutdown():
-            self.publish_visuals()
+            self.publish_visuals()            
             self.time_back_needed = self.calculate_time_back()
             #print("time needed to home:", self.time_back_needed)
             x, y = self.map.closest_free_path(self.x, self.y)
@@ -306,6 +310,27 @@ class Mother:
         else:
             raise ValueError('[mother] unknown state in perception callback')
             return
+
+    def battery_callback(self, data):
+
+        if self.x is None: # we don't have a position of robot yet
+            return
+
+        do = DetectedObject(
+            self.x + data.polygon.points[1].x + data.polygon.points[2].x,
+            self.y + data.polygon.points[1].y + data.polygon.points[2].y,
+            0
+        )
+
+        #if self.classify_state_machine.state == ROTATING:
+        #    return
+
+        #Add pickable in the map
+        sleep(1) # let pf converge
+        add_pickable = rospy.ServiceProxy('/map/add_pickable', AddPickable)
+        do.map_id = add_pickable(do.x, do.y)
+        sleep(1) # wait for map to be updated
+
 
     def acknowledge_new_pickable(self, do):
         print('[mother] adding', do.color_str, do.type_str)
@@ -463,6 +488,7 @@ if __name__ == '__main__':
     rospy.init_node('motherbrain')
     mother = Mother()
     rospy.Subscriber('objectPos_wheelcenter2', classifierObject, mother.perception_callback)
+    rospy.Subscriber('obstaclePos_wheelcenter', polyStamped, mother.battery_callback)
     rospy.Subscriber('position', PoseStamped, mother.position_callback)
 
     x, y, theta = None, None, None
@@ -480,3 +506,5 @@ if __name__ == '__main__':
         raise NotImplementedError('Only goto implemented atm')
 
     rospy.spin()
+
+#/obstaclePos_wheelcenter, geometry_msgs/polygonStamped
