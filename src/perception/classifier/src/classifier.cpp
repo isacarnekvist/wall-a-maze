@@ -48,6 +48,18 @@
 
 #include <pcl/io/vtk_lib_io.h>
 
+// TA BORT!
+// ROS
+#include <ros/ros.h>
+#include <ros/package.h>
+#include <pcl_ros/point_cloud.h>
+
+// C++ General
+#include <stdlib.h>     /* atoi */
+
+// PCL
+#include <pcl/filters/extract_indices.h>
+
 
 #define PI           3.14159265358979323846  /* pi */
 
@@ -63,6 +75,7 @@ std::map<std::string, std::vector<std::string> > objectTypes;
 std::vector<std::string> colorNames;
 
 hsvColor wallColor;
+hsvColor allColor;
 
 ros::Publisher object_pub;
 ros::Publisher point_pub;
@@ -84,6 +97,8 @@ std::vector<float> pointSize;
 
 double outlierMaxNeighbours, outlierStddev, clusterTolerance, minClusterSize, maxClusterSize;
 
+double clusterTolerance_obstacles, minClusterSize_obstacles, maxClusterSize_obstacles;
+
 double lowCertaintyLimit, highCertaintyLimit;
 
 std::map<std::string, std::map<std::string, float> > certaintyLimits;
@@ -102,6 +117,10 @@ void initParams(ros::NodeHandle n) {
     n.getParam("/clusterTolerance", clusterTolerance);
     n.getParam("/minClusterSize", minClusterSize);
     n.getParam("/maxClusterSize", maxClusterSize);
+
+    n.getParam("/clusterTolerance", clusterTolerance_obstacles);
+    n.getParam("/minClusterSize", minClusterSize_obstacles);
+    n.getParam("/maxClusterSize", maxClusterSize_obstacles);
 
     n.getParam("/radiusSearch", normalRadiusSearch);
     n.getParam("/normalizeBins", normalizeBins);
@@ -125,6 +144,10 @@ void initParams(ros::NodeHandle n) {
     std::map<std::string, double> wallColorMap;
     n.getParam("wall_color_hsv", wallColorMap);
     wallColor = { wallColorMap["h_min"], wallColorMap["h_max"], wallColorMap["s_min"], wallColorMap["s_max"], wallColorMap["v_min"], wallColorMap["v_max"] };
+
+    std::map<std::string, double> allColorMap;
+    n.getParam("all_hsv", allColorMap);
+    allColor = { allColorMap["h_min"], allColorMap["h_max"], allColorMap["s_min"], allColorMap["s_max"], allColorMap["v_min"], allColorMap["v_max"] };
 
     for (int i = 0; i < colorNames.size(); i++) {
         // Colors
@@ -310,7 +333,7 @@ float getObjectDistance(pcl_rgb::Ptr cloud_in) {
 
     pcl::getMinMax3D(*cloud_transformed, min_p, max_p);
 
-    return max_p.x;
+    return max_p.z;
 }
 
 std::pair<std::string, float> classify(pcl_rgb::Ptr cloud_in, std::string color) {
@@ -329,12 +352,13 @@ std::pair<std::string, float> classify(pcl_rgb::Ptr cloud_in, std::string color)
 
     std::vector<std::pair<std::string, float> > candidates;
 
-    classify(cloud_xyz, candidates, color);
+    classify(cloud_xyz, candidates, "all");
 
     std::string object = "nope";
     size_t i = 0;
+
     for (; i < candidates.size(); i++) {
-        if (candidates[i].second > certaintyLimits.at(color).at(candidates[i].first)) {
+        if (certaintyLimits.at(color).find(candidates[i].first) != certaintyLimits.at(color).end() && candidates[i].second > certaintyLimits.at(color).at(candidates[i].first)) {
             return std::make_pair<std::string, float>("nope", candidates[i].second); // We are too unsure to even know if it is an object
         }
 
@@ -403,118 +427,157 @@ classifier::Object getOptimalPickupPoint(pcl_rgb::Ptr & cloud_in) {
 }
 
 void findObjects(pcl::PointCloud<pcl::PointXYZRGB>::Ptr & input_cloud, std::vector<foundObject> & foundObjects) {
-    std::vector<std::string> detectedObjects;
-    // Find the color objects
-    for (int i = 0; i < colors.size(); i++) {
-        std::vector<pcl_rgb::Ptr> objects = PointCloudHelper::getObjects(input_cloud, colors[i], outlierMaxNeighbours, outlierStddev, clusterTolerance, minClusterSize, maxClusterSize);
+    std::vector<pcl_rgb::Ptr> objects = PointCloudHelper::getObjects(input_cloud, allColor, outlierMaxNeighbours, outlierStddev, clusterTolerance, minClusterSize, maxClusterSize);
 
-        for (size_t j = 0; j < objects.size(); j++) {
-            // Classify
-            std::pair<std::string, float> objectType = classify(objects[j], colorNames[i]);
-            if (objectType.first == "nope") {
-                continue;
-            }
-            //if (objectType.first == "star" && colorNames[i].substr(0, colorNames[i].find("_")) == "orange") {
-            //    objectType.first = "patric";
-            //}
-            //std::cout << objectType << std::endl;
-
-            // Filter so only top remains
-            // TODO: Do this before classify?!
-            pcl::transformPointCloud(*objects[j], *objects[j], translation, rotation);
-            classifier::Object object = getOptimalPickupPoint(objects[j]);
-
-            foundObject fObject;
-            fObject.color = colorNames[i].substr(0, colorNames[i].find("_"));
-            fObject.type = objectType.first;
-            fObject.certainty = objectType.second;
-            fObject.x = object.x;
-            fObject.y = -object.y;
-            fObject.z = object.z;
-
-            foundObjects.push_back(fObject);
+    for (size_t j = 0; j < objects.size(); j++) {
+        std::string color = PointCloudHelper::getDominateColor(objects[j], colors, colorNames);
+        if (color == "") {
+            continue;
         }
+
+        // Classify
+        std::pair<std::string, float> objectType = classify(objects[j], color);
+        if (objectType.first == "nope") {
+            continue;
+        }
+
+        //if (objectType.first == "star" && colorNames[i].substr(0, colorNames[i].find("_")) == "orange") {
+        //    objectType.first = "patric";
+        //}
+        //std::cout << objectType << std::endl;
+
+        // Filter so only top remains
+        // TODO: Do this before classify?!
+        pcl::transformPointCloud(*objects[j], *objects[j], translation, rotation);
+        pcl::PointXYZ optimalPickupPoint = PointCloudHelper::getOptimalPickupPoint(objects[j], objectType.first);
+
+        classifier::Object object;
+        object.x = optimalPickupPoint.x;
+        object.y = optimalPickupPoint.y;
+        object.z = optimalPickupPoint.z;
+
+        foundObject fObject;
+        fObject.color = color.substr(0, color.find("_"));
+        fObject.type = objectType.first;
+        fObject.certainty = objectType.second;
+        fObject.x = object.x;
+        fObject.y = -object.y;
+        fObject.z = object.z;
+
+        foundObjects.push_back(fObject);
     }
 }
 
 bool classifyService(classifier::Find_Object::Request & req, classifier::Find_Object::Response & res) {
-    // Check if there is a point cloud included
-    if (req.cloud.data.size() == 0) {
-        sensor_msgs::PointCloud2ConstPtr msg = ros::topic::waitForMessage<sensor_msgs::PointCloud2>("camera/depth_registered/points", ros::Duration(0.3));
+    int numTries = 1;	
+    for (int loops = 0; loops < numTries; loops++) {
+        // Check if there is a point cloud included
+        if (req.cloud.data.size() == 0) {
+	    int numTries = 3;
+            sensor_msgs::PointCloud2ConstPtr msg = ros::topic::waitForMessage<sensor_msgs::PointCloud2>("camera/depth_registered/points", ros::Duration(0.3));
 
-        if (msg == NULL) {
-            return false;
+            if (msg == NULL) {
+                return false;
+            }
+
+            req.cloud = *msg;
         }
 
-        req.cloud = *msg;
-    }
+        pcl::PCLPointCloud2 pcl_pc2;
+        pcl_conversions::toPCL(req.cloud, pcl_pc2);
+        pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
+        pcl::fromPCLPointCloud2(pcl_pc2, *cloud);
 
-    pcl::PCLPointCloud2 pcl_pc2;
-    pcl_conversions::toPCL(req.cloud, pcl_pc2);
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
-    pcl::fromPCLPointCloud2(pcl_pc2, *cloud);
+        PointCloudHelper::preProcess(cloud, translation, rotation, pointSize, wallColor);
 
-    PointCloudHelper::preProcess(cloud, translation, rotation, pointSize, wallColor);
+        std::vector<foundObject> objects;
+        findObjects(cloud, objects);
 
-    std::vector<foundObject> objects;
-    findObjects(cloud, objects);
+        std::vector<foundObject>::iterator it = objects.begin();
+        while (it != objects.end()) {
+            bool keep = false;
 
-    std::vector<foundObject>::iterator it = objects.begin();
-    while (it != objects.end()) {
-        bool keep = false;
-
-        if (req.color.size() != 0) {
-            for (size_t i = 0; i < req.color.size(); i++) {
-                if (req.type.size() != 0) {
-                    for (size_t j = 0; j < req.type.size(); j++) {
-                        if (req.color[i] == it->color && req.type[j] == it->type) {
+            if (req.color.size() != 0) {
+                for (size_t i = 0; i < req.color.size(); i++) {
+                    if (req.type.size() != 0) {
+                        for (size_t j = 0; j < req.type.size(); j++) {
+                            if (req.color[i] == it->color && req.type[j] == it->type) {
+                                keep = true;
+                                break;
+                            }
+                        }
+                        if (keep) {
+                            break;
+                        }
+                    } else {
+                        if (req.color[i] == it->color) {
                             keep = true;
                             break;
                         }
                     }
-                    if (keep) {
-                        break;
-                    }
-                } else {
-                    if (req.color[i] == it->color) {
+                }
+            } else if (req.type.size() != 0){
+                for (size_t i = 0; i < req.type.size(); i++) {
+                    if (req.type[i] == it->type) {
                         keep = true;
                         break;
                     }
                 }
+            } else {
+                keep = true;
             }
-        } else if (req.type.size() != 0){
-            for (size_t i = 0; i < req.type.size(); i++) {
-                if (req.type[i] == it->type) {
-                    keep = true;
-                    break;
-                }
+
+            if (!keep) {
+                it = objects.erase(it);
+            } else {
+                it++;
             }
-        } else {
-            keep = true;
         }
 
-        if (!keep) {
-            it = objects.erase(it);
-        } else {
-            it++;
+        for (size_t i = 0; i < objects.size(); i++) {
+            res.color.push_back(objects[i].color);
+            res.type.push_back(objects[i].type);
+            res.certainty.push_back(objects[i].certainty);
+            res.x.push_back(objects[i].x);
+            res.y.push_back(objects[i].y);
+            res.z.push_back(objects[i].z);
         }
-    }
 
-    for (size_t i = 0; i < objects.size(); i++) {
-        res.color.push_back(objects[i].color);
-        res.type.push_back(objects[i].type);
-        res.certainty.push_back(objects[i].certainty);
-        res.x.push_back(objects[i].x);
-        res.y.push_back(objects[i].y);
-        res.z.push_back(objects[i].z);
+        if (res.x.size() > 0) {
+            // We have found the object(s)!
+            break;
+        }
     }
 
     res.header.frame_id = "wheel_center";
     res.header.stamp = ros::Time();
 
-    std::cout << "Cloud size: " << cloud->size() << std::endl;
-
     return true;
+}
+
+std::string getFileName(std::string colorName) {
+    int currentMax = 0;
+
+    std::string save_dir = ros::package::getPath("test_classifier") + "/Data/Maze/" + colorName + "/nothing";
+
+    boost::filesystem::path p(save_dir);
+
+    for (boost::filesystem::directory_iterator i = boost::filesystem::directory_iterator(p); i != boost::filesystem::directory_iterator(); i++) {
+        if (!boost::filesystem::is_directory(i->path())) {
+            std::string fileName = i->path().filename().string();
+
+            if (fileName.find(".pcd") != std::string::npos) {
+                fileName = fileName.substr(0, fileName.size() - 4);
+
+                int current = atoi(fileName.c_str());
+                if (current >= currentMax) {
+                    currentMax = current + 1;
+                }
+            }
+        }
+    }
+
+    return boost::lexical_cast<std::string>(currentMax);
 }
 
 void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input_cloud) {
@@ -524,60 +587,81 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
 
     PointCloudHelper::preProcess(cloud, translation, rotation, pointSize, wallColor);
 
-    pcl::io::savePCDFileBinary(training_dir + "/test.pcd", *cloud);
+    pcl_rgb::Ptr cloud_object (new pcl_rgb);
+    *cloud_object = *cloud;
 
-    // Colored objects
-    for (size_t i = 0; i < colors.size(); i++) {
-        // Get objects
-        std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> objects = PointCloudHelper::getObjects(cloud, colors[i], outlierMaxNeighbours, outlierStddev, clusterTolerance, minClusterSize, maxClusterSize);
+    //pcl::io::savePCDFileBinary(training_dir + "/test.pcd", *cloud);
 
-        for (size_t j = 0; j < objects.size(); j++) {
-            // Classify
-            // Type, certainty
-            std::pair<std::string, float> objectType = classify(objects[j], colorNames[i]);
-            if (objectType.first == "nope") {
-                // Could not classify this object!
-                std::cout << objectType.second << std::endl;
-                continue;
-            }
+    // Get objects
+    std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> objects = PointCloudHelper::getObjects(cloud_object, allColor, outlierMaxNeighbours, outlierStddev, clusterTolerance, minClusterSize, maxClusterSize);
 
-            pcl::transformPointCloud(*objects[j], *objects[j], translation, rotation);
-            pcl::PointXYZ optimalPickupPoint = PointCloudHelper::getOptimalPickupPoint(objects[j], objectType.first);
-
-            if (objectType.first == "star" && colorNames[i].substr(0, colorNames[i].find("_")) == "orange") {
-                objectType.first = "patric";
-            }
-
-            classifier::Object object;
-            object.x = optimalPickupPoint.x;
-            object.y = optimalPickupPoint.y;
-            object.z = optimalPickupPoint.z;
-
-            std::string temp;
-            if (objectType.first != "patric") {
-                temp = colorNames[i].substr(0, colorNames[i].find("_")) + " ";
-                std::cout << colorNames[i].substr(0, colorNames[i].find("_")) << " ";
-            }
-            //detectedObjects.push_back(temp + objectType.first);
-            std::cout << objectType.first << " (" << objectType.second << ") at: " << "X: " << object.x << ", Y: " << object.y << ", Z: " << object.z <<  std::endl;
-
-
-            object.color = colorNames[i].substr(0, colorNames[i].find("_"));
-            object.type = objectType.first;
-
-
-            object_pub.publish(object);
+    for (size_t j = 0; j < objects.size(); j++) {
+        std::string color = PointCloudHelper::getDominateColor(objects[j], colors, colorNames);
+        if (color == "") {
+            continue;
         }
+
+        // Classify
+        // Type, certainty
+        std::pair<std::string, float> objectType = classify(objects[j], color);
+        if (objectType.first == "nope") {
+            // Could not classify this object!
+            //std::cout << objectType.second << std::endl;
+            continue;
+        }
+
+        pcl::transformPointCloud(*objects[j], *objects[j], translation, rotation);
+        pcl::PointXYZ optimalPickupPoint = PointCloudHelper::getOptimalPickupPoint(objects[j], objectType.first);
+
+        if (objectType.first == "star" && color.substr(0, color.find("_")) == "orange") {
+            objectType.first = "patric";
+        }
+
+        classifier::Object object;
+        object.x = optimalPickupPoint.x;
+        object.y = optimalPickupPoint.y;
+        object.z = optimalPickupPoint.z;
+
+        std::string temp;
+        if (objectType.first != "patric") {
+            temp = color.substr(0, color.find("_")) + " ";
+            std::cout << color.substr(0, color.find("_")) << " ";
+        }
+        //detectedObjects.push_back(temp + objectType.first);
+        std::cout << objectType.first << " (" << objectType.second << ") at: " << "X: " << object.x << ", Y: " << object.y << ", Z: " << object.z <<  std::endl;
+
+
+        object.color = color.substr(0, color.find("_"));
+        object.type = objectType.first;
+
+
+        object_pub.publish(object);
+
+        //boost::filesystem::path dir(ros::package::getPath("test_classifier") + "/Data/Maze/" + object.color + "/nothing");
+        //boost::filesystem::create_directories(dir);
+        //pcl::io::savePCDFileBinary(ros::package::getPath("test_classifier") + "/Data/Maze/" + object.color + "/nothing/" + getFileName(object.color) + ".pcd", *input_cloud);
     }
 
     // Obstacles
+    if (cloud->size() == 0) {
+        return;
+    }
 
     // Transform
     pcl::transformPointCloud(*cloud, *cloud, translation, rotation);
 
+    for (size_t i = 0; i < colors.size(); i++) {
+        pcl_rgb::Ptr temp (new pcl_rgb);
+        PointCloudHelper::HSVFilter(cloud, temp, colors[i]);
+    }
+
+    if (cloud->size() == 0) {
+        return;
+    }
+
     // TODO: maybe different values for these objects since they are larger
     // Segmentation
-    std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> objects = PointCloudHelper::segmentation(cloud, clusterTolerance, minClusterSize, maxClusterSize);
+    objects = PointCloudHelper::segmentation(cloud, clusterTolerance_obstacles, minClusterSize_obstacles, maxClusterSize_obstacles);
 
     pcl::PointXYZ minX, maxX, minY, maxY;
     for (size_t i = 0; i < objects.size(); i++) {

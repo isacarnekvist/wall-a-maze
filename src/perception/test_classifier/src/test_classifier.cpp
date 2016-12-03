@@ -147,7 +147,7 @@ int main(int argc, char **argv) {
 
         if (client.call(srv)) {
             if (srv.response.color.size() == 0) {
-                if (objectLocations[i].color == "none") {
+                if (objectLocations[i].type == "nothing") {
                     right++;
                     std::cout << textColor::green << "Correctly not classified: " << objectLocations[i].color << " " << objectLocations[i].type << textColor::white << std::endl;
                     continue;

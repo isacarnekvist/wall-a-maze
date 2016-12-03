@@ -107,7 +107,7 @@ namespace PointCloudHelper {
 
         // Remove walls
         pcl_rgb::Ptr cloud_temp (new pcl_rgb);
-        HSVFilter(cloud_in, cloud_temp, wallColor);
+        //HSVFilter(cloud_in, cloud_temp, wallColor);
 
         // Resize
         if (pointSize[0] != 0 || pointSize[1] != 0 || pointSize[2] != 0) {
@@ -191,44 +191,47 @@ namespace PointCloudHelper {
 
         pcl::getMinMax3D(*cloud_in, min_p, max_p);
 
+        optimalPoint.x = min_p.z;
+        optimalPoint.z = -max_p.y;
+
         // What if you cannot see the whole object?!
-        optimalPoint.y = min_p.x + ((max_p.x - min_p.x) / 2.0);
+        optimalPoint.y = (min_p.x + ((max_p.x - min_p.x) / 2.0));
 
         if (objectType == "cube") {
             // Todo, what if the object is too close?!
             optimalPoint.x = min_p.z + 0.02;    // 2 cm from closest point
 
-            optimalPoint.z = -max_p.y;   // Max in height
+            optimalPoint.z = -max_p.y + 0.02;   // Max in height
         } else if (objectType == "hollow cube") {
             // Todo, what if the object is too close?!
             optimalPoint.x = min_p.z + 0.02;    // 2 cm from closest point
 
-            optimalPoint.z = -max_p.y - 0.02;   // It is hollow
+            optimalPoint.z = -max_p.y;   // It is hollow
         } else if (objectType == "ball") {
             // Todo, what if the object is too close?!
             optimalPoint.x = min_p.z + 0.02;    // 2 cm from closest point
 
-            optimalPoint.z = -max_p.y;   // Max in height
+            optimalPoint.z = -max_p.y + 0.025;   // Max in height
         } else if (objectType == "triangle") {
             // Todo, what if the object is too close?!
             optimalPoint.x = min_p.z + 0.02;    // 2 cm from closest point
 
-            optimalPoint.z = -max_p.y + 0.02;   // Max in height
+            optimalPoint.z = -max_p.y;   // Max in height
         } else if (objectType == "star") {
             // Todo, what if the object is too close?!
             optimalPoint.x = min_p.z + 0.02;    // 2 cm from closest point
 
-            optimalPoint.z = -max_p.y + 0.02;   // Max in height
+            optimalPoint.z = -max_p.y;   // Max in height
         } else if (objectType == "cross") {
             // Todo, what if the object is too close?!
             optimalPoint.x = min_p.z + 0.02;    // 2 cm from closest point
 
-            optimalPoint.z = -max_p.y + 0.02;   // Max in height
+            optimalPoint.z = -max_p.y;   // Max in height
         } else if (objectType == "cylinder") {
             // Todo, what if the object is too close?!
             optimalPoint.x = min_p.z + 0.02;    // 2 cm from closest point
 
-            optimalPoint.z = -max_p.y + 0.02;   // Max in height
+            optimalPoint.z = -max_p.y;   // Max in height
         }
 
         return optimalPoint;
@@ -265,5 +268,25 @@ namespace PointCloudHelper {
         }
 
         return objects;
+    }
+
+    std::string getDominateColor(pcl_rgb::Ptr & cloud_in, std::vector<hsvColor> & colors, std::vector<std::string> & colorNames) {
+        pcl_rgb::Ptr cloud (new pcl_rgb);
+        *cloud = *cloud_in;
+
+        std::string dominate = "";
+        int points = 10;    // Min limit
+
+        for (size_t i = 0; i < colors.size(); i++) {
+            pcl_rgb::Ptr temp (new pcl_rgb);
+            HSVFilter(cloud, temp, colors[i]);
+
+            if (temp->size() > points) {
+                points = temp->size();
+                dominate = colorNames[i];
+            }
+        }
+
+        return dominate;
     }
 }

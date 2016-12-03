@@ -36,6 +36,8 @@ namespace PointCloudHelper {
     std::vector<pcl_rgb::Ptr> segmentation(pcl_rgb::Ptr & cloud_in, double clusterTolerance = 0.02, double minClusterSize = 100, double maxClusterSize = 25000);
     
     pcl::PointXYZ getOptimalPickupPoint(pcl_rgb::Ptr & cloud_in, std::string objectType);
+
+    std::string getDominateColor(pcl_rgb::Ptr & cloud_in, std::vector<hsvColor> & colors, std::vector<std::string> & colorNames);
 }
 
 #endif // POINT_CLOUD_HELPER_H
