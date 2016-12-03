@@ -58,10 +58,12 @@ def path_length(path, x, y):
 NORMAL = 0
 ROTATING = 1
 CLASSIFYING = 2
+BLOCKING = 3
 CS_STATE_DICT = {
     NORMAL: 'NORMAL',
     ROTATING: 'ROTATING',
-    CLASSIFYING: 'CLASSIFYING'
+    CLASSIFYING: 'CLASSIFYING',
+    BLOCKING: 'BLOCKING',
 }
 
 class ClassifyStateMachine:
@@ -69,9 +71,9 @@ class ClassifyStateMachine:
     def __init__(self):
         self._state = NORMAL
         self.transitions = {
-            NORMAL: [ROTATING],
-            ROTATING: [CLASSIFYING],
-            CLASSIFYING: [NORMAL]
+            NORMAL: [ROTATING, BLOCKING],
+            ROTATING: [CLASSIFYING, BLOCKING],
+            CLASSIFYING: [NORMAL, BLOCKING]
         }
         self.deadline_to_state = (None, None) # a deadline to change state to 2nd element
 
@@ -223,7 +225,6 @@ class Mother:
         sleep(0.5)
 
     def goto(self, x=None, y=None, theta=None):
-        rate = rospy.Rate(10)
         if x is not None:
             goal = PlannerTargetGoal()
             goal.cancel_action = False
@@ -237,20 +238,20 @@ class Mother:
                 goal.ignore_target_theta = False
             self.planner_client.send_goal(goal)
         while not rospy.is_shutdown():
-            if self.planner_client.wait_for_result():
+            yield
+            if self.planner_client.wait_for_result(rospy.Duration(5.0)):
                 break
-            rate.sleep()
         # TODO how to differentiate between preempted and blocked?
-        return self.planner_client.get_result()
+        yield self.planner_client.get_result()
 
     def explore(self):
+
+        deadline = rospy.Time.now() + rospy.Duration(3 * 60) # change to 3 minutes!
 
         x_hell, y_hell = (
             self.map.max_x - 0.20,
             self.map.max_y - 0.20
         )
-
-        print(self.map.get_state(0.25, 0.25))
 
         first_target = True
         rate = rospy.Rate(10)
@@ -258,9 +259,6 @@ class Mother:
             rate.sleep()
         
         while not rospy.is_shutdown():
-            self.publish_visuals()            
-            self.time_back_needed = self.calculate_time_back()
-            #print("time needed to home:", self.time_back_needed)
             if self.map.get_state(x_hell, y_hell) == NON_VISITED:
                 x, y = x_hell, y_hell
             else:
@@ -271,10 +269,24 @@ class Mother:
             while (self.classify_state_machine.state in [ROTATING, CLASSIFYING]
                    and not rospy.is_shutdown()):
                 rate.sleep()
-            planner_res = self.goto(x, y).reached_target_state
-            if planner_res == CANNOT_REACH:
+            for planner_res in self.goto(x, y):
+                self.publish_visuals()            
+                self.time_back_needed = self.calculate_time_back()
+                print("turn back in: :", deadline - (rospy.Time.now() + rospy.Duration(self.time_back_needed)))
+                if deadline - (rospy.Time.now() + rospy.Duration(self.time_back_needed)) < rospy.Duration(0):
+                    self.time_out(contest_stage=0)
+                    exit(0)
+                if planner_res is not None:
+                    break
+            if planner_res.reached_target_state == CANNOT_REACH:
                 self.map.block(x, y)
-            print('[mother] goto({}, {}) returned: {}'.format(x, y, PLANNER_DICT[planner_res]))
+            print('[mother] goto({}, {}) returned: {}'.format(x, y, PLANNER_DICT[planner_res.reached_target_state]))
+
+    def time_out(self, contest_stage):
+        self.classify_state_machine.transition_to(BLOCKING)
+        rate = rospy.Rate(1)
+        for _ in self.goto(0.25, 0.25):
+            rate.sleep()
 
     def calculate_time_back(self):
         path_plan_srv = rospy.ServiceProxy('/path_plan', PathPlan)
@@ -299,6 +311,9 @@ class Mother:
         self.planner_client.send_goal(goal)
 
     def perception_callback(self, data):
+
+        if self.classify_state_machine.state == BLOCKING:
+            return
 
         if self.x is None: # we don't have a position of robot yet
             return
