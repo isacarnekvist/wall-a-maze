@@ -8,8 +8,8 @@ from geometry_msgs.msg import Twist, PoseStamped
 class Robot:
 
     def __init__(self):
-        self.x = 0.7
-        self.y = 2.2
+        self.x = 0.25
+        self.y = 0.25
         self.theta = 3.14
         self.linear_velocity = 0.0
         self.angular_velocity = 0.0
