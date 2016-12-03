@@ -17,7 +17,7 @@ from std_msgs.msg import String, Bool
 from sensor_msgs.msg import Image
 from ras_msgs.msg import RAS_Evidence
 #from planner.msg import PlannerTarget
-from geometry_msgs.msg import PoseStamped, PointStamped, TransformStamped, Point, polyStamped
+from geometry_msgs.msg import PoseStamped, PointStamped, TransformStamped, Point, PolygonStamped
 from localization.srv import AddPickable, RemovePickable
 
 from planner.srv import PathPlan
@@ -29,6 +29,16 @@ from manipulation.srv import *
 NON_VISITED = 0
 VISITED = 1
 BLOCKED = 2
+
+REACHED_TARGET = 0
+CANNOT_REACH = 1
+PREEMPTED_OTHER = 2
+
+PLANNER_DICT = {
+    0: 'REACHED_TARGET',
+    1: 'CANNOT_REACH',
+    2: 'PREEMPTED_OTHER'
+}
 
 
 def euclidean(p1, p2):
@@ -102,11 +112,20 @@ class Map:
             dtype=int
         )
 
+    def get_state(self, x, y):
+        x_ind, y_ind = self.coords_to_inds(x, y)
+        return self.grid[x_ind, y_ind]
+
     def visit(self, x, y):
         x_ind, y_ind = self.coords_to_inds(x, y)
         starting_position_set_occupied = True
         if x_ind < self.grid.shape[0] and y_ind < self.grid.shape[1]:
             self.grid[x_ind, y_ind] = VISITED
+
+    def block(self, x, y):
+        x_ind, y_ind = self.coords_to_inds(x, y)
+        if x_ind < self.grid.shape[0] and y_ind < self.grid.shape[1]:
+            self.grid[x_ind, y_ind] = BLOCKED
 
     def furthest_free_euclidean(self, x, y):
         x_ind, y_ind = self.coords_to_inds(x, y)
@@ -226,8 +245,12 @@ class Mother:
 
     def explore(self):
 
-        #go to the farthest point
-        print('[mother] goto returned:', self.goto(self.map.max_x, self.map.max_y))
+        x_hell, y_hell = (
+            self.map.max_x - 0.20,
+            self.map.max_y - 0.20
+        )
+
+        print(self.map.get_state(0.25, 0.25))
 
         first_target = True
         rate = rospy.Rate(10)
@@ -238,14 +261,20 @@ class Mother:
             self.publish_visuals()            
             self.time_back_needed = self.calculate_time_back()
             #print("time needed to home:", self.time_back_needed)
-            x, y = self.map.closest_free_path(self.x, self.y)
+            if self.map.get_state(x_hell, y_hell) == NON_VISITED:
+                x, y = x_hell, y_hell
+            else:
+                x, y = self.map.closest_free_path(self.x, self.y)
             if x is None or y is None:
                 print('No unexplored places!')
                 break
             while (self.classify_state_machine.state in [ROTATING, CLASSIFYING]
                    and not rospy.is_shutdown()):
                 rate.sleep()
-            print('[mother] goto returned:', self.goto(x, y))
+            planner_res = self.goto(x, y).reached_target_state
+            if planner_res == CANNOT_REACH:
+                self.map.block(x, y)
+            print('[mother] goto({}, {}) returned: {}'.format(x, y, PLANNER_DICT[planner_res]))
 
     def calculate_time_back(self):
         path_plan_srv = rospy.ServiceProxy('/path_plan', PathPlan)
@@ -261,12 +290,8 @@ class Mother:
         og.info.height = self.map.grid.shape[1]
         og.info.origin.position.x = 0.0
         og.info.origin.position.y = 0.0
-        og.data = 100 * self.map.grid.T.flatten()
-        try:
-            self.grid_publisher.publish(og)
-        except rospy.exceptions.ROSSerializationException:
-            # Don't know why this happens, just return and be happy if it works later
-            return
+        og.data = 100 * self.map.grid.T.flatten() / 2
+        self.grid_publisher.publish(og)
 
     def stop(self):
         goal = PlannerTargetGoal()
@@ -488,7 +513,7 @@ if __name__ == '__main__':
     rospy.init_node('motherbrain')
     mother = Mother()
     rospy.Subscriber('objectPos_wheelcenter2', classifierObject, mother.perception_callback)
-    rospy.Subscriber('obstaclePos_wheelcenter', polyStamped, mother.battery_callback)
+    rospy.Subscriber('obstaclePos_wheelcenter', PolygonStamped, mother.battery_callback)
     rospy.Subscriber('position', PoseStamped, mother.position_callback)
 
     x, y, theta = None, None, None
