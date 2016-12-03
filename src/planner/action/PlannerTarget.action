@@ -4,6 +4,6 @@ float64 theta
 bool ignore_target_theta
 bool cancel_action
 ---
-bool reached_target
+int32 reached_target_state # 0: reached, 1: can't go there, 2: preempted or other
 ---
 # No feedback
