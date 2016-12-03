@@ -58,6 +58,7 @@ add_service_files(
   FILES
   PathPlan.srv
   PlannerStatus.srv
+  BlocksPositions.srv
 )
 
 # Generate actions in the 'action' folder
