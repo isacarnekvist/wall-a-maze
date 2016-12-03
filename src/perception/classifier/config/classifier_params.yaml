@@ -9,11 +9,13 @@ orange_hsv: { h_min: 15.0, h_max: 25.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_ma
 
 yellow_hsv: { h_min: 25.0, h_max: 50.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
 
-green_hsv: { h_min: 60.0, h_max: 130.0, s_min: 0.2, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
+green_hsv: { h_min: 60.0, h_max: 140.0, s_min: 0.2, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
 
-blue_hsv: { h_min: 130.0, h_max: 215.0, s_min: 0.2, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
+blue_hsv: { h_min: 140.0, h_max: 215.0, s_min: 0.2, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
 
 purple_hsv: { h_min: 250.0, h_max: 360.0, s_min: 0.10, s_max: 1.0, v_min: 0.3, v_max: 1.0 }
+
+all_hsv: { h_min: 0.0, h_max: 360.0, s_min: 0.0, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
 
 red_2_hsv: { h_min: 355.0, h_max: 360.0, s_min: 0.5, s_max: 1.0, v_min: 0.0, v_max: 1.0 }
 
@@ -32,23 +34,25 @@ outlierStddev: 1.0
 wall_color_hsv: { h_min: 0.0, h_max: 360.0, s_min: 0.00, s_max: 0.5, v_min: 0.5, v_max: 1.0 }
 
 # Cluster Segmentation
-clusterTolerance: 0.02
-# 300
-minClusterSize: 200
+clusterTolerance: 0.005
+minClusterSize: 175
 maxClusterSize: 25000
+clusterTolerance_obstacles: 0.02
+minClusterSize_obstacles: 25
+maxClusterSize_obstacles: 25000
 
 # Max distance for classification
 classifyMaxDistance: 0.3
 
 # Points Size [ X, Y, Z ]
-pointSize: [ 0.002, 0.002, 0.002 ]
+pointSize: [ 0.004, 0.004, 0.004 ]
 
 # Classifier limits
-red_certaintyLimit: { cube: 1100, ball: 600, hollow cube: 1500 }
-orange_certaintyLimit: { star: 1500 }
-yellow_certaintyLimit: { cube: 1800, ball: 1000 }
-green_certaintyLimit: { cube: 1300, cylinder: 1200 }
-blue_certaintyLimit: { cube: 1000, triangle: 1400 }
+red_certaintyLimit: { cube: 1000, ball: 1000, hollow cube: 1000 }
+orange_certaintyLimit: { star: 1000 }
+yellow_certaintyLimit: { cube: 300, ball: 300 }
+green_certaintyLimit: { cube: 1000, cylinder: 1000 }
+blue_certaintyLimit: { cube: 1000, triangle: 1000 }
 purple_certaintyLimit: { cross: 1000, star: 1000 }
 lowCertaintyLimit: 2000.0
 highCertaintyLimit: 2000.0

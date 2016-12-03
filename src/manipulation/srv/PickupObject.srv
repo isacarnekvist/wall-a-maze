@@ -2,7 +2,7 @@
 geometry_msgs/PointStamped position # Object position -- should be wheel_frame
 string color	# Maybe not needed
 string type
-
+bool doPickup
 ---
 # Response
 bool success

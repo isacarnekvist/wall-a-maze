@@ -29,7 +29,8 @@ enum LINEPLAN_STATE {
     TARGET_ROTATION,
     BEFORE_DONE,
     DONE,
-    OBSTRUCTED,
+    OBSTRUCTED_BACKING,
+    OBSTRUCTED_CONVERGING,
     WAITING_REPLAN
 };
 
@@ -207,8 +208,8 @@ bool PathController::line_control(LinePlan &lp) {
         }
     }
     float side_k = 12.0;
-    float left_factor = 2 - 2 / (1 + exp(-side_k * left_min));
-    float right_factor = 2 - 2 / (1 + exp(-side_k * right_min));
+    float left_factor = 1 - 1 / (1 + exp(-side_k * left_min));
+    float right_factor = 1 - 1 / (1 + exp(-side_k * right_min));
     float front_factor = 2 / (1 + exp(-6 * closest_front)) - 1;
     float linear = max(MAX_LINEAR_SPEED * target_close_factor * front_factor, 0.1);
     float angular = 0.8 * sinus_error + 0.3 * theta_error + right_factor - left_factor;
@@ -270,10 +271,10 @@ void PathController::execute_plan(LinePlan &lp) {
         break;
     case EXECUTING_LINE:
         if (path_is_obstructed(lp)) {
-            lp.deadline = ros::Time::now() + ros::Duration(3.0);
-            publish_twist(0, 0);
-            cerr << "[path_executor] Switching to state OBSTRUCTED" << endl;
-            lp.state = OBSTRUCTED;
+            lp.deadline = ros::Time::now() + ros::Duration(1.0);
+            publish_twist(-0.1, 0);
+            cerr << "[path_executor] Switching to state OBSTRUCTED_BACKING" << endl;
+            lp.state = OBSTRUCTED_BACKING;
             break;
         }
         target_reached = line_control(lp);
@@ -315,7 +316,15 @@ void PathController::execute_plan(LinePlan &lp) {
             lp.state = DONE;
         }
         break;
-    case OBSTRUCTED:
+    case OBSTRUCTED_BACKING:
+        if (ros::Time::now() >= lp.deadline) {
+            cerr << "[path_executor] Switching to state OBSTRUCTED_CONVERGING" << endl;
+            publish_twist(0, 0);
+            lp.deadline = ros::Time::now() + ros::Duration(3.0);
+            lp.state = OBSTRUCTED_CONVERGING;
+        }
+        break;
+    case OBSTRUCTED_CONVERGING:
         if (ros::Time::now() >= lp.deadline) {
             /* send obstacles to map */
             publish_seen_obstacles();
@@ -350,7 +359,18 @@ void PathController::stop_motors() {
 }
 
 void PathController::execute_callback(const planner::PlannerTargetGoal::ConstPtr &msg) {
+    cerr << "[path_executor] got target: "
+         << msg->x << ", "
+         << msg->y
+         << " bool executing_plan = " << executing_plan
+         << " bool cancel_action = " << (int)msg->cancel_action
+         << endl;
     ros::Rate r (128);
+    if (msg->cancel_action) {
+        executing_plan = false;
+        server.setSucceeded();
+        return;
+    }
     while (executing_plan && ros::ok()) {
         r.sleep();
     }
@@ -366,6 +386,7 @@ void PathController::execute_callback(const planner::PlannerTargetGoal::ConstPtr
     if (n_sections == 0) {
         planner::PlannerTargetResult res;
         res.reached_target = false;
+        executing_plan = false;
         server.setSucceeded(res);
         return;
     }
@@ -375,7 +396,7 @@ void PathController::execute_callback(const planner::PlannerTargetGoal::ConstPtr
         srv.response.plan.points[0].y
     );
     if (n_sections == 1) {
-        current_line_plan.ignore_target_theta = false;
+        current_line_plan.ignore_target_theta = msg->ignore_target_theta;
         current_line_plan.target_theta = msg->theta;
     }
 
@@ -412,7 +433,7 @@ void PathController::execute_callback(const planner::PlannerTargetGoal::ConstPtr
                     srv.response.plan.points[current_section].x,
                     srv.response.plan.points[current_section].y,
                     msg->theta,
-                    false
+                    msg->ignore_target_theta
                 );
             } else {
                 /* Next segment */
@@ -428,8 +449,8 @@ void PathController::execute_callback(const planner::PlannerTargetGoal::ConstPtr
     stop_motors();
     planner::PlannerTargetResult res;
     res.reached_target = true;
-    server.setSucceeded(res);
     executing_plan = false;
+    server.setSucceeded(res);
 }
 
 void PathController::position_callback(const geometry_msgs::PoseStamped::ConstPtr &msg) {
@@ -477,7 +498,8 @@ bool PathController::path_is_obstructed(const LinePlan &lp) {
 void PathController::publish_seen_obstacles() {
     geometry_msgs::Polygon msg;
     for (const geometry_msgs::Point32 &p : scans) {
-        if (p.x < 0) continue;
+        if (p.x < -0.2) continue;
+        if (euclidean(p.x, p.y) > 0.8) continue;
         geometry_msgs::Point32 map_point;
         map_point.x = p.x * cos(theta) - p.y * sin(theta) + x;
         map_point.y = p.x * sin(theta) + p.y * cos(theta) + y;

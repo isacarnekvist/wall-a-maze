@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import print_function
 
+import os
 import sys
 import argparse
 from time import sleep
@@ -10,33 +11,165 @@ import tf
 import rospy
 import numpy as np
 import actionlib
+from nav_msgs.msg import OccupancyGrid
 from actionlib_msgs.msg import GoalStatus
-from std_msgs.msg import String
+from std_msgs.msg import String, Bool
 from sensor_msgs.msg import Image
 from ras_msgs.msg import RAS_Evidence
 #from planner.msg import PlannerTarget
-from geometry_msgs.msg import PoseStamped, PointStamped, TransformStamped, Point
+from geometry_msgs.msg import PoseStamped, PointStamped, TransformStamped, Point, polyStamped
 from localization.srv import AddPickable, RemovePickable
 
-from planner.msg import PlannerTargetGoal, PlannerTargetAction
+from planner.srv import PathPlan
 from classifier.msg import Object as classifierObject
+from planner.msg import PlannerTargetGoal, PlannerTargetAction
 
 from manipulation.srv import *
+
+NON_VISITED = 0
+VISITED = 1
+BLOCKED = 2
+
+
+def euclidean(p1, p2):
+    return np.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2)
+
+
+def path_length(path, x, y):
+    plan = path.plan.points
+    if len(plan) == 0:
+        return np.inf
+    dist = (x - plan[0].x) ** 2 + (y - plan[0].y) ** 2
+    for i in range(1, len(plan)):
+        dist += euclidean(plan[i-1], plan[i])
+    return dist
+
+
+NORMAL = 0
+ROTATING = 1
+CLASSIFYING = 2
+CS_STATE_DICT = {
+    NORMAL: 'NORMAL',
+    ROTATING: 'ROTATING',
+    CLASSIFYING: 'CLASSIFYING'
+}
+
+class ClassifyStateMachine:
+    
+    def __init__(self):
+        self._state = NORMAL
+        self.transitions = {
+            NORMAL: [ROTATING],
+            ROTATING: [CLASSIFYING],
+            CLASSIFYING: [NORMAL]
+        }
+        self.deadline_to_state = (None, None) # a deadline to change state to 2nd element
+
+    def transition_to(self, state):
+        print('[mother] Transition from state {} to {}'.format(CS_STATE_DICT[self.state], CS_STATE_DICT[state]))
+        if state in self.transitions[self.state]:
+            self.state = state
+        else:
+            raise ValueError('Transition from {} to {} not allowed'.format(self.state, state))
+
+    @property
+    def state(self):
+        return self._state
+
+
+class Map:
+
+    def __init__(self):
+        map_path = os.environ.get('MAP_PATH')
+        self.min_x = np.inf
+        self.max_x = -np.inf
+        self.min_y = np.inf
+        self.max_y = -np.inf
+        self.cell_width = 0.4
+        self.starting_position_set_occupied = False;
+        with open(map_path, 'r') as f:
+            for line in f:
+                if line[0] == '#':
+                    continue
+                x1, y1, x2, y2 = map(float, line.split())
+                self.min_x = min(self.min_x, x1, x2)
+                self.min_y = min(self.min_y, y1, y2)
+                self.max_x = max(self.max_x, x1, x2)
+                self.max_y = max(self.max_y, y1, y2)
+        self.grid = np.zeros(
+            ((self.max_x - self.min_x) / self.cell_width + 1,
+             (self.max_y - self.min_y) / self.cell_width + 1),
+            dtype=int
+        )
+
+    def visit(self, x, y):
+        x_ind, y_ind = self.coords_to_inds(x, y)
+        starting_position_set_occupied = True
+        if x_ind < self.grid.shape[0] and y_ind < self.grid.shape[1]:
+            self.grid[x_ind, y_ind] = VISITED
+
+    def furthest_free_euclidean(self, x, y):
+        x_ind, y_ind = self.coords_to_inds(x, y)
+        dists = []
+        for i in range(self.grid.shape[0]):
+            for j in range(self.grid.shape[1]):
+                if self.grid[i, j] == NON_VISITED:
+                    dists.append(((i - x_ind) ** 2 + (j - y_ind) ** 2, i, j))
+        if len(dists):
+            dist, i, j = sorted(dists)[-1]
+            return (i + 0.5) * self.cell_width, (j + 0.5) * self.cell_width
+        else:
+            return None, None
+
+    def closest_free_path(self, current_x, current_y):
+        #           distance   x      y
+        min_path = (np.inf, np.inf, np.inf)
+        x_ind, y_ind = self.coords_to_inds(current_x, current_y)
+        inds = [((x_ind - i) ** 2 + (y_ind - j) ** 2, i, j) for i in range(self.grid.shape[0]) for j in range(self.grid.shape[1])]
+        for _, i, j in sorted(inds):
+            if self.grid[i, j] != NON_VISITED:
+                continue
+            x = (i + 0.5) * self.cell_width
+            y = (j + 0.5) * self.cell_width
+            if np.sqrt((current_x - i * self.cell_width) ** 2 + (current_y - j * self.cell_width) ** 2) > min_path[0]:
+                continue
+            path_plan_srv = rospy.ServiceProxy('/path_plan', PathPlan)
+            plan = path_plan_srv(x, y)
+            min_path = min(min_path, (path_length(plan, current_x, current_y), x, y))
+        
+        if min_path[0] == np.inf:
+            return None, None
+        else:
+            return min_path[1:]
+
+    def coords_to_inds(self, x, y):
+        return int(x / self.cell_width), int(y / self.cell_width)
 
 
 class DetectedObject:
 
-    def __init__(self, x, y, z, type_str, color_str):
+    def __init__(self, x, y, z, type_str=None, color_str=None):
         self.x = x
         self.y = y
         self.z = z
+        self.position_confirmed = False
         self.type_str = type_str
         self.color_str = color_str
+        self.map_id = None
         rospy.wait_for_service('/map/add_pickable')
         rospy.wait_for_service('/map/remove_pickable')        
 
+    def position_equal(self, other):
+        if abs(self.x - other.x) > 0.2:
+            return False
+        if abs(self.y - other.y) > 0.2:
+            return False
+        if abs(self.z - other.z) > 0.2:
+            return False
+        return True
+
     def __eq__(self, other):
-        if self.type_str != other.type_str:
+        if other.type_str != self.type_str or other.color_str != self.color_str:
             return False
         if abs(self.x - other.x) > 0.1:
             return False
@@ -49,67 +182,102 @@ class DetectedObject:
 
 class Mother:
 
-    X=0
-    Y=0
-    T=0
-
     def __init__(self):
         self.speaker = rospy.Publisher('espeak/string', String, queue_size=10)
         self.evidence = rospy.Publisher('/evidence', RAS_Evidence, queue_size=10)
+        self.start_time = rospy.Time.now()
+        self.grid_publisher = rospy.Publisher('visited_grid', OccupancyGrid, queue_size=10)
         self.planner_client = actionlib.SimpleActionClient(
             'path_executor',
             PlannerTargetAction
         )
+        self.map = Map()
         self.planner_client.wait_for_server()     
+        self.time_back_needed = 0.0
+        self.recieved_position = False
         self.x = None
         self.y = 0.0
         self.theta = 0.0
         self.possible_objects = []
+        self.classify_state_machine = ClassifyStateMachine()
         # Give ROS a little time to acknowledge publisher, especially for planner        
         sleep(0.5)
 
-    def run(self, x=None, y=None, theta=None):
-        self.stop()
-        global X,Y,T        
-        object_target = None
-        detected_object = None
-        pickup_goal = None
+    def goto(self, x=None, y=None, theta=None):
         rate = rospy.Rate(10)
         if x is not None:
             goal = PlannerTargetGoal()
+            goal.cancel_action = False
             goal.x = x
-            X=x
             goal.y = y
-            Y=y            
-            goal.theta = theta
-            T=theta            
+            if theta is None:
+                goal.theta = 0.0
+                goal.ignore_target_theta = True
+            else:
+                goal.theta = theta
+                goal.ignore_target_theta = False
             self.planner_client.send_goal(goal)
         while not rospy.is_shutdown():
-            if(self.planner_client.wait_for_result()):
-                print(self.planner_client.get_result())
-                return
-            rate.sleep()        
-        return
+            if self.planner_client.wait_for_result():
+                break
+            rate.sleep()
+        # TODO how to differentiate between preempted and blocked?
+        return self.planner_client.get_result()
+
+    def explore(self):
+
+        #go to the farthest point
+        print('[mother] goto returned:', self.goto(self.map.max_x, self.map.max_y))
+
+        first_target = True
+        rate = rospy.Rate(10)
+        while not self.recieved_position and not rospy.is_shutdown():
+            rate.sleep()
+        
+        while not rospy.is_shutdown():
+            self.publish_visuals()            
+            self.time_back_needed = self.calculate_time_back()
+            #print("time needed to home:", self.time_back_needed)
+            x, y = self.map.closest_free_path(self.x, self.y)
+            if x is None or y is None:
+                print('No unexplored places!')
+                break
+            while (self.classify_state_machine.state in [ROTATING, CLASSIFYING]
+                   and not rospy.is_shutdown()):
+                rate.sleep()
+            print('[mother] goto returned:', self.goto(x, y))
+
+    def calculate_time_back(self):
+        path_plan_srv = rospy.ServiceProxy('/path_plan', PathPlan)
+        plan = path_plan_srv(0.25, 0.25)
+        return path_length(plan, self.x, self.y) / 0.14 + len(plan.plan.points) * 4
+
+    def publish_visuals(self):
+        og = OccupancyGrid()
+        og.header.frame_id = '/map'
+        og.header.stamp = rospy.Time.now()
+        og.info.resolution = self.map.cell_width
+        og.info.width = self.map.grid.shape[0]
+        og.info.height = self.map.grid.shape[1]
+        og.info.origin.position.x = 0.0
+        og.info.origin.position.y = 0.0
+        og.data = 100 * self.map.grid.T.flatten()
+        try:
+            self.grid_publisher.publish(og)
+        except rospy.exceptions.ROSSerializationException:
+            # Don't know why this happens, just return and be happy if it works later
+            return
 
     def stop(self):
-        self.planner_client.cancel_goal()
-        return
-
-    def approach(self,x=None, y=None, theta=None):
-        global X,Y,Z        
-        old_x=X
-        old_y=Y
-        old_theta=T
-        print("going to objectwith x,y,theta:",x,y,theta)
-        mother.run(x=x,y=y,theta=theta)
-        print("going to previous target")
-        sleep(1)
-        mother.run(x=old_x,y=old_y,theta=old_theta)
-        return
+        goal = PlannerTargetGoal()
+        goal.cancel_action = True
+        self.planner_client.send_goal(goal)
 
     def perception_callback(self, data):
-        if self.x is None: # fix this properly!
+
+        if self.x is None: # we don't have a position of robot yet
             return
+
         do = DetectedObject(
             self.x + data.x * np.cos(self.theta) - data.y * np.sin(self.theta),
             self.y + data.x * np.sin(self.theta) + data.y * np.cos(self.theta),
@@ -118,55 +286,88 @@ class Mother:
             data.color
         )
 
-        #Add pickable in the map
-        try:
-            add_pickable = rospy.ServiceProxy('/map/add_pickable',AddPickable)
-            response = add_pickable(do.x,do.y)
-            print("response:",response)
-        except rospy.ServiceException, e:
-            print("Add Pickable service could not be called")        
-        for o in self.possible_objects:
-            if o == do:
-                o.x = do.x
-                o.y = do.y
-                o.z = do.z
+        if self.classify_state_machine.state == ROTATING:
+            return
+
+        elif self.classify_state_machine.state == NORMAL:
+            if not self.ignore_seen_pickable(do):
+                self.stop()
+                self.classify_state_machine.transition_to(ROTATING)
+                self.pickup(do, False) # Change this bool depending on contest stage
+
+                self.classify_state_machine.deadline_to_state = (rospy.Time.now() + rospy.Duration(1), NORMAL)
+                self.classify_state_machine.transition_to(CLASSIFYING)
+            else:
                 return
 
+        elif self.classify_state_machine.state == CLASSIFYING:
+            if self.classify_state_machine.deadline_to_state[0] < rospy.Time.now():
+                self.classify_state_machine.transition_to(self.classify_state_machine.deadline_to_state[1])
+            elif self.is_new_object(do):
+                self.acknowledge_new_pickable(do)
+            return
+
+        else:
+            raise ValueError('[mother] unknown state in perception callback')
+            return
+
+    def battery_callback(self, data):
+
+        if self.x is None: # we don't have a position of robot yet
+            return
+
+        do = DetectedObject(
+            self.x + data.polygon.points[1].x + data.polygon.points[2].x,
+            self.y + data.polygon.points[1].y + data.polygon.points[2].y,
+            0
+        )
+
+        #if self.classify_state_machine.state == ROTATING:
+        #    return
+
+        #Add pickable in the map
+        sleep(1) # let pf converge
+        add_pickable = rospy.ServiceProxy('/map/add_pickable', AddPickable)
+        do.map_id = add_pickable(do.x, do.y)
+        sleep(1) # wait for map to be updated
+
+
+    def acknowledge_new_pickable(self, do):
+        print('[mother] adding', do.color_str, do.type_str)
+        #Add pickable in the map
+        sleep(1) # let pf converge
+        add_pickable = rospy.ServiceProxy('/map/add_pickable', AddPickable)
+        do.map_id = add_pickable(do.x, do.y)
+        sleep(1) # wait for map to be updated
+
         # speak!
-        self.speaker.publish('I see a {} {}'.format(data.color, data.type))
+        self.speaker.publish('I see a {} {}'.format(do.color_str, do.type_str))
 
         #RAS Evidence
         image=rospy.client.wait_for_message('/camera/rgb/image_raw',Image)         
         evidence = RAS_Evidence()
         evidence.group_number = 6
         evidence. image_evidence = image
-        evidence.object_id = data.color + '_' + data.type 
+        evidence.object_id = do.color_str + '_' + do.type_str
         
         #Robot frame??
         evidence.object_location.transform.translation.x = do.x
         evidence.object_location.transform.translation.y = do.y
-        evidence.object_location.transform.translation.z = data.z        
+        evidence.object_location.transform.translation.z = do.z        
         self.evidence.publish(evidence) 
-        print ("I saw",data.color,data.type)
-
-        theta=np.arctan((do.y-self.y)/(do.x-self.x))
-        #Approach
-        sleep(1)
-        mother.approach(x=do.x, y=do.y, theta=theta)
-        print("I came back here")
-
-        # Call manipulation service
-        pickup_location = PointStamped()
-        pickup_location.point = Point(data.x,data.y,data.z)
-        pickup_location.header.frame_id = 'wheel_center'
-
-        object_type = data.type
-        object_color = data.color
-
-        isPickedUp = self.pickupObject_client(pickup_location,object_type,object_color)
+        print ("I saw", do.color_str, do.type_str, 'at', do.x, do.y, do.z)
 
         self.possible_objects.append(do)
-        print('length of po:', len(self.possible_objects))
+
+    def pickup(self, do, do_pickup): # do means detected object
+        # Call manipulation service
+        pickup_location = PointStamped()
+        pickup_location.point = Point(
+            do.x, do.y, do.z
+        )
+        pickup_location.header.frame_id = 'wheel_center'
+
+        isPickedUp = self.pickupObject_client(pickup_location, do.color_str, do.type_str, do_pickup)
 
     def position_callback(self, data):
         self.x = data.pose.position.x
@@ -178,13 +379,17 @@ class Mother:
             data.pose.orientation.w
         ]
         self.theta = tf.transformations.euler_from_quaternion(q)[-1] # roll
+        if not self.map.starting_position_set_occupied:
+            self.map.visit(self.x, self.y)
+        self.map.visit(self.x + np.cos(self.theta) * 0.15, self.y + np.sin(self.theta) * 0.15)
+        self.recieved_position = True
 
 
-    def pickupObject_client(self,position,object_type,object_color):
+    def pickupObject_client(self, position, object_type, object_color, do_pickup):
         rospy.wait_for_service('/manipulation/pickup_object')
         try:
-            pickup_object = rospy.ServiceProxy('/manipulation/pickup_object',PickupObject)
-            response = pickup_object(position,object_type,object_color)
+            pickup_object = rospy.ServiceProxy('/manipulation/pickup_object', PickupObject)
+            response = pickup_object(position, object_type, object_color, do_pickup)
             return response
         except rospy.ServiceException, e:
             print("PickupObject service could not be called")
@@ -215,13 +420,31 @@ class Mother:
             return response
         except rospy.ServiceException, e:
             print("CarryObject service could not be called")
-        
-#   def collision(data):
-#       if(data=="Stop"):
-#           mother.stop()
 
+    def is_new_object(self, do):
+        # Object is in starting box
+        if 0.0 < do.x < 0.4 and 0.0 < do.y < 0.4:
+            return False
 
-    def pickup_client(self,position, color, object_type):
+        # Check if already seen
+        for o in self.possible_objects:
+            if o == do: # it has the same position and identity as some other _pickable_ object
+                return False
+        return True
+
+    def ignore_seen_pickable(self, do):
+        # Object is in starting box
+        if 0.0 < do.x < 0.4 and 0.0 < do.y < 0.4:
+            return 
+
+        # Check if already seen
+        for o in self.possible_objects:
+            if o.position_equal(do): # it has the same position as some other _pickable_ object
+                return True
+
+        return False
+
+    def pickup_client(self, position, color, object_type):
         rospy.wait_for_service('manipulation/pickup_object',PickupObject)
         try:
             pickup_object = rospy.ServiceProxy('manipulation/pickup_object',PickupObject)
@@ -265,41 +488,23 @@ if __name__ == '__main__':
     rospy.init_node('motherbrain')
     mother = Mother()
     rospy.Subscriber('objectPos_wheelcenter2', classifierObject, mother.perception_callback)
+    rospy.Subscriber('obstaclePos_wheelcenter', polyStamped, mother.battery_callback)
     rospy.Subscriber('position', PoseStamped, mother.position_callback)
-    #rospy.Subscriber('/imu/collision', String, mother.collision)
 
     x, y, theta = None, None, None
     if args.which == 'goto':
         x = args.x
         y = args.y
         theta = args.theta
-        mother.run(x=x, y=y, theta=theta)
+        mother.goto(x=x, y=y, theta=theta)
     elif args.which == 'explore':
-        x = 2.1
-        y = 0.2
-        theta = 0
-        mother.run(x=x, y=y, theta=theta)    
-        x = 2.1
-        y = 2.1
-        theta = 1.57
-        mother.run(x=x, y=y, theta=theta)
-        x = 0.2
-        y = 2.1
-        theta = 1.57
-        mother.run(x=x, y=y, theta=theta)
-        x = 0.2
-        y = 0.2
-        theta = 3.14
-        mother.run(x=x, y=y, theta=theta)
+        mother.explore()
     elif args.which == 'stop':
+        mother.object_target = 'dummy ugly hack'
         mother.stop()
     else:
         raise NotImplementedError('Only goto implemented atm')
 
     rospy.spin()
 
-
-#map_updated,Bool
-#import os
-#fn=os.environ.get('MAP_PATH')
-
+#/obstaclePos_wheelcenter, geometry_msgs/polygonStamped

@@ -100,9 +100,13 @@ class Manipulate():
 		if response == False:
 			return PickupObjectResponse(False)
 		else:
-			pickupResponse = self.pickup(request,object_type='other')
-			print("pickupResponse is {}".format(pickupResponse))
-			return PickupObjectResponse(pickupResponse)	# Modify later
+			if request.doPickup:
+				pickupResponse = self.pickup(request,object_type='other')
+				print("pickupResponse is {}".format(pickupResponse))
+				return PickupObjectResponse(pickupResponse)	# Modify later
+        	
+			return PickupObjectResponse(True)
+    
 	
 
 	def handle_place(self,request):
@@ -203,7 +207,7 @@ class Manipulate():
 
 	def rotateToBooby(self):
 		move_angular = Twist()
-		yTol = 0.04
+		yTol = 0.02
 		times_rotated = 0
 
 		while times_rotated < 10:
@@ -366,7 +370,7 @@ class Manipulate():
 	def pickup(self,request,object_type):
 		num_tries = 0
 		max_tries = 1
-		zTol = 0.03	# [m]
+		zTol = 0.02	# [m]
 
 		# ToDo: Add multiple probing, but see first how behaves when multiple times going down!
 
@@ -374,7 +378,7 @@ class Manipulate():
 			if object_type == 'booby':
 				objectPos = self.booby_position
 				if not self.booby_detected:
-					print("Object no longer in sight.")
+					print("Trap no longer in sight.")
 					return False
 					break				
 			else:
@@ -387,6 +391,14 @@ class Manipulate():
 			print("It is the {}th pickup try".format(num_tries))
 			
 			pickupPos_wheelcenter = objectPos.point
+
+			# Hacks for objects
+			if object_type != 'booby':
+				correct_x = ['cylinder', 'star', 'cross', 'triangle', 'hollow cube']
+				if request.type in correct_x:
+					print("Hacked x"	)
+					objectPos.point.x = objectPos.point.x + 0.01
+
 
 			# Transform to arm frame
 			pickupPos = self.transform_wheelToArm(objectPos)
@@ -401,6 +413,7 @@ class Manipulate():
 			aboveGoal_pos = Point(pickupPos_arm.x, pickupPos_arm.y, pickupPos_arm.z + 4.0) #correct 6, include in param file	
 		
 			aboveGoal_state = self.moveToPos_client(aboveGoal_pos, self.move_mode, self.moveDuration_abs, self.interpol_way)
+			print("Moved above goal")
 			if aboveGoal_state.error == True:
 				return False
 				break
@@ -421,10 +434,11 @@ class Manipulate():
 			# Modify goal pos to go to lower z
 			pickupPos_arm_low = pickupPos_high_new
 			pickupPos_arm_low.z = pickupPos_arm.z	#change when perception correct
-			
+
 			# Turn on pump
 			self.pump_control(True)
 			
+
 			# Move down with corrected x,y
 			atGoal_state = self.moveToPos_client(pickupPos_arm_low,self.move_mode, self.moveDuration_abs, self.interpol_way)
 			if atGoal_state.error == True:
@@ -433,25 +447,35 @@ class Manipulate():
 				break					
 
 			# Move back up
-			aboveGoal_pos.z = aboveGoal_pos.z + 3.0
+			aboveGoal_pos.z = self.initPos_arm.z #aboveGoal_pos.z + 3.0
 			aboveGoal_state = self.moveToPos_client(aboveGoal_pos, self.move_mode, self.moveDuration_abs, self.interpol_way)
 			
+			# Quit booby without check
+			'''
+			if object_type == 'booby':
+				objectPos_new = self.booby_position
+				if (objectPos_new.point.z-pickupPos_wheelcenter.z) > zTol:
+					print("pickup returns true")
+					return True
+				else:
+					self.pump_control(False)
+					self.toInitPos()
+					return False
+			'''
+
 			# Check if picked up	
 			if object_type !='booby':
 				objectPos_new = self.objectPos_client(request,select=False)
 				if objectPos_new == False:
-					print("Object no longer in sight after trying to pickup!")
-					self.pump_control(False)
-					self.toInitPos()
-					return False
-
+					return True
+	
+				'''
 				print("Object is lifted by {} m".format(objectPos_new.point.z-pickupPos_wheelcenter.z))
 
 				if (objectPos_new.point.z-pickupPos_wheelcenter.z) > zTol:
 					print("pickup returns true")
 					return True
-					break
-			
+				'''
 			num_tries += 1
 
 			if num_tries == max_tries:
@@ -459,7 +483,8 @@ class Manipulate():
 				self.toInitPos()
 			
 	def booby_callback(self,data):
-		if data.point.z < 0.01:
+		if data.point.z < 0.01 or data == None:
+			print("Data is none or z smaller than 0.01")
 			self.booby_detected = False
 		else:
 			self.booby_position = data	
