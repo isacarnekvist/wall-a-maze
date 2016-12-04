@@ -89,7 +89,10 @@ class ClassifyStateMachine:
         self.transitions = {
             NORMAL: [ROTATING, BLOCKING],
             ROTATING: [CLASSIFYING, BLOCKING],
-            CLASSIFYING: [NORMAL, BLOCKING]
+            CLASSIFYING: [NORMAL, BLOCKING],
+            NORMAL: [BATTERY_CONVERGING, BLOCKING],
+            BATTERY_CONVERGING: [BATTERY_CLASSIFYING, BLOCKING],
+            BATTERY_CLASSIFYING: [NORMAL, BLOCKING]
         }
         self.deadline_to_state = (None, None) # a deadline to change state to 2nd element
 
