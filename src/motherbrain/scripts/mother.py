@@ -27,6 +27,8 @@ from planner.msg import PlannerTargetGoal, PlannerTargetAction
 
 from manipulation.srv import *
 
+EXPLORED_OBJECTS_FN = '/home/ras36/catkin_ws/explored_objects.pkl'
+
 NON_VISITED = 0
 VISITED = 1
 BLOCKED = 2
@@ -187,9 +189,13 @@ class DetectedObject:
         self.x = x
         self.y = y
         self.z = z
+        self.robot_x = None
+        self.robot_y = None
+        self.priority_score = 0.0
         self.position_confirmed = False
         self.type_str = type_str
         self.color_str = color_str
+        self.expected_pickup_time = None
         self.map_id = None
         rospy.wait_for_service('/map/add_pickable')
         rospy.wait_for_service('/map/remove_pickable')        
@@ -213,6 +219,12 @@ class DetectedObject:
         if abs(self.z - other.z) > 0.1:
             return False
         return True
+    
+    def pickup_pose(self):
+        theta = np.atan2(self.x - self.robot_x, self.y - self.robot_y)
+        while theta < 0.0:
+            theta += 2 * np.pi
+        return self.robot_x, self.robot_y, theta
 
 class Battery:
 
@@ -280,16 +292,61 @@ class Mother:
         # TODO how to differentiate between preempted and blocked?
         yield self.planner_client.get_result()
 
+    def score(self):
+
+        # ignore seen object at this stage
+        self.classify_state_machine.transition_to(BLOCKING)
+
+        with open(EXPLORED_OBJECTS_FN, 'rb') as f:
+            self.pickables, self.batteries = pickle.load(f)
+        for do in self.pickables:
+            do.expected_pickup_time = 2 * self.calculate_travel_time(do.robot_x, do.robot_y)
+            do.priority_score = SCORE_DICT[do.type_str] / do.expected_pickup_time
+
+        deadline = rospy.Time.now() + rospy.Duration(3 * 60)
+
+        ordering = sorted(self.pickables, key=lambda x: -x.priority_score)
+        while rospy.Time.now() < deadline and ordering:
+            current_object = ordering[0]
+            ordering = ordering[1:]
+            for planner_res in self.goto(*current_object.pickup_pose()):
+                if planner_res is not None:
+                    break
+                if rospy.Time.now() < deadline:
+                    self.time_out(contest_stage=1)
+                    exit(0)
+            if planner_res.reached_target_state != REACHED_TARGET:
+                continue
+            # pickup
+            for i in range(2):
+                pickup_success = self.pickup(do, True) # Change this bool depending on contest stage
+                if pickup_success:
+                    break
+            if not pickup_success:
+                continue
+            self.carryObject_client(do, True) # Change this bool depending on contest stage
+            # go home
+            for planner_res in self.goto(0.25, 0.25):
+                if planner_res is not None:
+                    break
+                if rospy.Time.now() < deadline:
+                    self.time_out(contest_stage=1)
+                    exit(0)
+            # drop
+            self.dropObject_client()
+            
+        self.time_out(contest_stage=1)
+
     def explore(self):
 
-        deadline = rospy.Time.now() + rospy.Duration(3 * 60) # change to 3 minutes!
+        print('[mother] explore time is set to 3 minutes, should be 5!')
+        deadline = rospy.Time.now() + rospy.Duration(3 * 60) # change to 5 minutes!
 
         x_hell, y_hell = (
             self.map.max_x - 0.20,
             self.map.max_y - 0.20
         )
 
-        first_target = True
         rate = rospy.Rate(10)
         while not self.recieved_position and not rospy.is_shutdown():
             rate.sleep()
@@ -331,14 +388,20 @@ class Mother:
 
     def time_out(self, contest_stage):
         if contest_stage == 0:
-            with open('explored_objects.pkl', 'wb') as f:
+            with open(EXPLORED_OBJECTS_FN, 'wb') as f:
                 pickle.dump((self.pickables, self.batteries))
+            self.stop()
+        if contest_stage == 1:
             self.stop()
 
     def calculate_time_back(self):
+        return self.calculate_travel_time(0.25, 0.25)
+
+    def calculate_travel_time(self, to_x, to_y):
         path_plan_srv = rospy.ServiceProxy('/path_plan', PathPlan)
-        plan = path_plan_srv(0.25, 0.25)
+        plan = path_plan_srv(to_x, to_y)
         return path_length(plan, self.x, self.y) / 0.14 + len(plan.plan.points) * 4
+        
 
     def publish_visuals(self):
         og = OccupancyGrid()
@@ -513,8 +576,6 @@ class Mother:
         elif do.color_str == 'purple' and do.type_str == 'star':
             evidence.object_id = RAS_EVIDENCE.purple_star
 
-        evidence.object_id = do.color_str + '_' + do.type_str
-        
         #Robot frame??
         evidence.object_location.transform.translation.x = do.x
         evidence.object_location.transform.translation.y = do.y
@@ -522,6 +583,8 @@ class Mother:
         self.evidence.publish(evidence) 
         print ("I saw", do.color_str, do.type_str, 'at', do.x, do.y, do.z)
 
+        do.robot_x = self.x
+        do.robot_y = self.y
         self.pickables.append(do)
 
     def pickup(self, do, do_pickup, ignore_type=False): # do means detected object
@@ -559,7 +622,7 @@ class Mother:
             pickup_object = rospy.ServiceProxy('/manipulation/pickup_object', PickupObject)
             response = pickup_object(position, object_type, object_color, do_pickup)
             return response
-        except rospy.ServiceException, e:
+        except rospy.ServiceException as e:
             print("PickupObject service could not be called")
 
     def placeObject_client(self,position):
@@ -568,7 +631,7 @@ class Mother:
             place_object = rospy.ServiceProxy('/manipulation/place_object',PlaceObject)
             response = place_object(position)
             return response
-        except rospy.ServiceException, e:
+        except rospy.ServiceException as e:
             print("PlaceObject service could not be called")
 
     def dropObject_client(self):
@@ -577,7 +640,7 @@ class Mother:
             drop_object = rospy.ServiceProxy('/manipulation/drop_object',DropObject)
             response = drop_object()
             return response
-        except rospy.ServiceException, e:
+        except rospy.ServiceException as e:
             print("DropObject service could not be called")
 
     def carryObject_client(self):
@@ -586,7 +649,7 @@ class Mother:
             carry_object = rospy.ServiceProxy('/manipulation/carry_object',CarryObject)
             response = carry_object()
             return response
-        except rospy.ServiceException, e:
+        except rospy.ServiceException as e:
             print("CarryObject service could not be called")
 
     def is_new_object(self, do):
@@ -618,7 +681,7 @@ class Mother:
             pickup_object = rospy.ServiceProxy('manipulation/pickup_object',PickupObject)
             response = pickup_object(position, color, object_type)
             return response
-        except rospy.ServiceException, e:
+        except rospy.ServiceException as e:
             print("Pickup service could not be called")
 
     def carry_client(self):
@@ -627,7 +690,7 @@ class Mother:
             carry_object = rospy.ServiceProxy('manipulation/carry_object',CarryObject)
             response = carry_object()
             return response
-        except rospy.ServiceException, e:
+        except rospy.ServiceException as e:
             print("Carry service could not be called")
 
     
@@ -667,7 +730,9 @@ if __name__ == '__main__':
         x = args.x
         y = args.y
         theta = args.theta
-        mother.goto(x=x, y=y, theta=theta)
+        rate = rospy.Rate(10)
+        for _ in mother.goto(x=x, y=y, theta=theta):
+            rate.sleep()
     elif args.which == 'explore':
         mother.explore()
     elif args.which == 'stop':
