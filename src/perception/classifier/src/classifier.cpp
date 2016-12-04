@@ -503,7 +503,7 @@ bool classifyService(classifier::Find_Object::Request & req, classifier::Find_Ob
     for (int loops = 0; loops < numTries; loops++) {
         // Check if there is a point cloud included
         if (req.cloud.data.size() == 0) {
-	    int numTries = 3;
+            int numTries = 3;   // No point cloud included so we will try multiple times.
             sensor_msgs::PointCloud2ConstPtr msg = ros::topic::waitForMessage<sensor_msgs::PointCloud2>("camera/depth_registered/points", ros::Duration(0.3));
 
             if (msg == NULL) {
@@ -713,14 +713,14 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
             point[1].x = max_p.z;
         } else {
             for (size_t p = 0; p < objects[i]->size(); p++) {
-                if (points[0].x < 0 && objects[i]->points[p].x == min_p.x) {
+                if (point[0].x < 0 && objects[i]->points[p].x == min_p.x) {
                     point[0].x = objects[i]->points[p].z;
                 }
-                if (points[1].x < 0 && objects[i]->points[p].x == max_p.x) {
-                    points[1].x = objects[i]->points[p].z;
+                if (point[1].x < 0 && objects[i]->points[p].x == max_p.x) {
+                    point[1].x = objects[i]->points[p].z;
                 }
 
-                if (points[0].x > 0 && points[1].x > 0) {
+                if (point[0].x >= 0 && point[1].x >= 0) {
                     break;
                 }
             }
