@@ -379,6 +379,7 @@ std::pair<std::string, float> classify(pcl_rgb::Ptr cloud_in, std::string color)
     }
 
     if (object == "nope") {
+        i = 0;
         for (; i < candidates.size(); i++) {
             /*
             if (certaintyLimits.at(color).find(candidates[i].first) != certaintyLimits.at(color).end() && candidates[i].second > certaintyLimits.at(color).at(candidates[i].first)) {
