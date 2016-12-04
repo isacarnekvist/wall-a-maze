@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import os
 import sys
+import pickle
 import argparse
 from time import sleep
 
@@ -18,7 +19,7 @@ from sensor_msgs.msg import Image
 from ras_msgs.msg import RAS_Evidence
 #from planner.msg import PlannerTarget
 from geometry_msgs.msg import PoseStamped, PointStamped, TransformStamped, Point, PolygonStamped, Twist
-from localization.srv import AddPickable, RemovePickable
+from localization.srv import AddPickable, RemovePickable, ResetMap
 
 from planner.srv import PathPlan
 from classifier.msg import Object as classifierObject
@@ -40,6 +41,15 @@ PLANNER_DICT = {
     2: 'PREEMPTED_OTHER'
 }
 
+SCORE_DICT = {
+    'ball': 10000,
+    'cross': 1000,
+    'star': 1000,
+    'hollow cube': 5000,
+    'cube': 100,
+    'triangle': 100,
+    'cylinder': 100,
+}
 
 def euclidean(p1, p2):
     return np.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2)
@@ -244,7 +254,7 @@ class Mother:
         self.x = None
         self.y = 0.0
         self.theta = 0.0
-        self.possible_objects = []
+        self.pickables = []
         self.batteries = []
         self.classify_state_machine = ClassifyStateMachine()
         # Give ROS a little time to acknowledge publisher, especially for planner        
@@ -302,10 +312,15 @@ class Mother:
                 self.time_back_needed = self.calculate_time_back()
                 if self.time_back_needed == np.inf:
                     self.stop()
-                    print('[mother] infinity time to return (no way back), reset map as a desperate measure?')
-                    return
+                    print('[mother] infinity time to return (no way back), reset map as a desperate measure')
+                    rospy.ServiceProxy('/map/reset_map', ResetMap)()
+                    for do in self.pickables:
+                        add_pickable = rospy.ServiceProxy('/map/add_pickable', AddPickable)
+                        do.map_id = add_pickable(do.x, do.y)
+                    sleep(1)
+                    break
                 print("turn back in:", deadline - (rospy.Time.now() + rospy.Duration(self.time_back_needed)))
-                if deadline - (rospy.Time.now() + rospy.Duration(self.time_back_needed)) < rospy.Duration(0):
+                if deadline - rospy.Time.now() < rospy.Duration(0):
                     self.time_out(contest_stage=0)
                     exit(0)
                 if planner_res is not None:
@@ -315,10 +330,10 @@ class Mother:
             print('[mother] goto({}, {}) returned: {}'.format(x, y, PLANNER_DICT[planner_res.reached_target_state]))
 
     def time_out(self, contest_stage):
-        self.classify_state_machine.transition_to(BLOCKING)
-        rate = rospy.Rate(1)
-        for _ in self.goto(0.25, 0.25):
-            rate.sleep()
+        if contest_stage == 0:
+            with open('explored_objects.pkl', 'wb') as f:
+                pickle.dump((self.pickables, self.batteries))
+            self.stop()
 
     def calculate_time_back(self):
         path_plan_srv = rospy.ServiceProxy('/path_plan', PathPlan)
@@ -365,7 +380,7 @@ class Mother:
             if not self.ignore_seen_pickable(do):
                 self.stop()
                 self.classify_state_machine.transition_to(ROTATING)
-                self.backup() # does not seem to work?
+                #self.backup()
                 self.pickup(do, False) # Change this bool depending on contest stage
 
                 self.classify_state_machine.deadline_to_state = (rospy.Time.now() + rospy.Duration(1), NORMAL)
@@ -404,7 +419,7 @@ class Mother:
             def publish(self, x):
                 pass
         self.backup = lambda: None
-        self.pickup = lambda: None
+        self.pickup = lambda fuck, you: None
         self.motor_publisher = MockMotorPub()
         rate = rospy.Rate(10)
         while not rospy.is_shutdown():
@@ -414,28 +429,22 @@ class Mother:
         if self.classify_state_machine.state not in [NORMAL, BATTERY_CONVERGING, BATTERY_CLASSIFYING]:
             return
 
+        state = self.classify_state_machine.state
         p1, p2 = data.polygon.points
         battery = Battery(p1.x, p1.y, p2.x, p2.y)
-        #if self.x is None: # we don't have a position of robot yet
-        #    return
-
-        #do = DetectedObject(
-        #    self.x + data.polygon.points[1].x + data.polygon.points[2].x,
-        #    self.y + data.polygon.points[1].y + data.polygon.points[2].y,
-        #    0
-        #)
-
-        ##if self.classify_state_machine.state == ROTATING:
-        ##    return
-
-        ##Add pickable in the map
-        #sleep(1) # let pf converge
-        #add_pickable = rospy.ServiceProxy('/map/add_pickable', AddPickable)
-        #do.map_id = add_pickable(do.x, do.y)
-        #sleep(1) # wait for map to be updated
-
+        if state == NORMAL:
+            #self.classify_state_machine.deadline_to_state = (rospy.Time.now() + rospy.Duration(1), NORMAL)
+            #self.classify_state_machine.transition_to(CLASSIFYING)
+            pass
+        elif state == BATTERY_CONVERGING:
+            pass
+        elif state == BATTERY_CLASSIFYING:
+            pass
 
     def acknowledge_new_pickable(self, do):
+        if do.type_str == 'object':
+            print('[mother] ignoring', do.color_str, do.type_str)
+            return
         print('[mother] adding', do.color_str, do.type_str)
         #Add pickable in the map
         sleep(1) # let pf converge
@@ -451,6 +460,28 @@ class Mother:
         evidence = RAS_Evidence()
         evidence.group_number = 6
         evidence. image_evidence = image
+        if do.color_str == 'orange':
+            evidence.object_id = RAS_EVIDENCE.patric
+        elif do.color_str == 'red' and do.type_str == 'cube':
+            evidence.object_id = RAS_EVIDENCE.red_cube
+        elif do.color_str == 'red' and do.type_str == 'hollow cube':
+            evidence.object_id = RAS_EVIDENCE.red_hollow_cube
+        elif do.color_str == 'red' and do.type_str == 'ball':
+            evidence.object_id = RAS_EVIDENCE.red_ball
+        elif do.color_str == 'green' and do.type_str == 'cube':
+            evidence.object_id = RAS_EVIDENCE.green_cube
+        elif do.color_str == 'green' and do.type_str == 'cylinder':
+            evidence.object_id = RAS_EVIDENCE.green_cylinder
+        elif do.color_str == 'blue' and do.type_str == 'cube':
+            evidence.object_id = RAS_EVIDENCE.blue_cube
+        elif do.color_str == 'blue' and do.type_str == 'triangle':
+            evidence.object_id = RAS_EVIDENCE.blue_triangle
+        elif do.color_str == 'yellow' and do.type_str == 'cube':
+            evidence.object_id = RAS_EVIDENCE.yellow_cube
+        elif do.color_str == 'yellow' and do.type_str == 'ball':
+            evidence.object_id = RAS_EVIDENCE.yellow_ball
+
+
         evidence.object_id = do.color_str + '_' + do.type_str
         
         #Robot frame??
@@ -460,9 +491,9 @@ class Mother:
         self.evidence.publish(evidence) 
         print ("I saw", do.color_str, do.type_str, 'at', do.x, do.y, do.z)
 
-        self.possible_objects.append(do)
+        self.pickables.append(do)
 
-    def pickup(self, do, do_pickup): # do means detected object
+    def pickup(self, do, do_pickup, ignore_type=False): # do means detected object
         # Call manipulation service
         pickup_location = PointStamped()
         pickup_location.point = Point(
@@ -470,7 +501,10 @@ class Mother:
         )
         pickup_location.header.frame_id = 'wheel_center'
 
-        isPickedUp = self.pickupObject_client(pickup_location, do.color_str, do.type_str, do_pickup)
+        if ignore_type:
+            isPickedUp = self.pickupObject_client(pickup_location, do.color_str, '', do_pickup)
+        else:
+            isPickedUp = self.pickupObject_client(pickup_location, do.color_str, do.type_str, do_pickup)
 
     def position_callback(self, data):
         self.x = data.pose.position.x
@@ -530,7 +564,7 @@ class Mother:
             return False
 
         # Check if already seen
-        for o in self.possible_objects:
+        for o in self.pickables:
             if o == do: # it has the same position and identity as some other _pickable_ object
                 return False
         return True
@@ -541,7 +575,7 @@ class Mother:
             return 
 
         # Check if already seen
-        for o in self.possible_objects:
+        for o in self.pickables:
             if o.position_equal(do): # it has the same position as some other _pickable_ object
                 return True
 
@@ -611,6 +645,8 @@ if __name__ == '__main__':
     elif args.which == 'dummy':
         mother.object_target = 'dummy ugly hack'
         mother.dummy()
+    elif args.which == 'score':
+        mother.score()
     else:
         raise NotImplementedError('Only goto implemented atm')
 
