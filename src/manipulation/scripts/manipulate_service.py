@@ -303,14 +303,17 @@ class Manipulate():
 				self.wheels_pub.publish(Twist())
 
 				print("Stopped rotating, object at y={}".format(self.pickupPos_wheel.y))
-				
+				start_time_forward = rospy.get_time()
+				max_duration_forward = rospy.Duration(5.0)
+
 				while objectPos.point.x > xAim:
 					move_linear.linear.x = 0.10  # m/s
 					self.wheels_pub.publish(move_linear)
 					print("X offset is {}".format(objectPos.point.x))
 					objectPos = self.objectPos_client(request, select=True)
-					if objectPos == False:
-						print("Object lost while moving forward.")
+
+					if objectPos == False or (rospy.get_time()-start_time_forward) < max_duration_forward :
+						print("Object lost while moving forward or move forward time expired.")
 						self.wheels_pub.publish(Twist())
 						return False
 						break		
