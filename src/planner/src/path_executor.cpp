@@ -550,7 +550,7 @@ bool PathController::path_is_obstructed(const LinePlan &lp) {
 void PathController::publish_seen_obstacles() {
     geometry_msgs::Polygon msg;
     for (const geometry_msgs::Point32 &p : scans) {
-        if (p.x < -0.2) continue;
+        if (p.x < 0.0) continue;
         if (euclidean(p.x, p.y) > 0.8) continue;
         geometry_msgs::Point32 map_point;
         map_point.x = p.x * cos(theta) - p.y * sin(theta) + x;
