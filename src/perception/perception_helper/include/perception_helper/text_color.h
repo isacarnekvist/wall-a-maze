@@ -2,6 +2,7 @@
 #define TEXT_COLOR_H
 
 namespace textColor {
+    const char normal[] = { 0x1b, '[', '0', ';', '3', '9', 'm', 0 };
 	const char white[] = { 0x1b, '[', '1', ';', '3', '7', 'm', 0 };         // White
 	const char lightRed[] = { 0x1b, '[', '1', ';', '3', '1', 'm', 0 };      // Light Red
 	const char green[] = { 0x1b, '[', '0', ';', '3', '2', 'm', 0 };         // Green

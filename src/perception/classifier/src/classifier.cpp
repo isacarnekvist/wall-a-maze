@@ -12,6 +12,7 @@
 #include <perception_helper/vfh_helper.h>
 #include <perception_helper/hsv_color.h>
 #include <perception_helper/point_cloud_helper.h>
+#include <perception_helper/text_color.h>
 
 #include "classifier/Object.h"
 #include "classifier/Classify.h"
@@ -76,6 +77,7 @@ std::vector<std::string> colorNames;
 
 hsvColor wallColor;
 hsvColor allColor;
+hsvColor boobyTrapColor;
 
 ros::Publisher object_pub;
 ros::Publisher point_pub;
@@ -149,6 +151,10 @@ void initParams(ros::NodeHandle n) {
     std::map<std::string, double> allColorMap;
     n.getParam("all_hsv", allColorMap);
     allColor = { allColorMap["h_min"], allColorMap["h_max"], allColorMap["s_min"], allColorMap["s_max"], allColorMap["v_min"], allColorMap["v_max"] };
+
+    std::map<std::string, double> boobyTrapColorMap;
+    n.getParam("boobyTrap_color_hsv", boobyTrapColorMap);
+    boobyTrapColor = { boobyTrapColorMap["h_min"], boobyTrapColorMap["h_max"], boobyTrapColorMap["s_min"], boobyTrapColorMap["s_max"], boobyTrapColorMap["v_min"], boobyTrapColorMap["v_max"] };
 
     for (int i = 0; i < colorNames.size(); i++) {
         // Colors
@@ -628,6 +634,7 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
     // Get objects
     std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> objects = PointCloudHelper::getObjects(cloud_object, allColor, outlierMaxNeighbours, outlierStddev, clusterTolerance, minClusterSize, maxClusterSize);
 
+    std::vector<std::pair<std::string, std::string> > detectedObjects;
     for (size_t j = 0; j < objects.size(); j++) {
         std::string color = PointCloudHelper::getDominateColor(objects[j], colors, colorNames);
         if (color == "") {
@@ -646,9 +653,9 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
         pcl::transformPointCloud(*objects[j], *objects[j], translation, rotation);
         pcl::PointXYZ optimalPickupPoint = PointCloudHelper::getOptimalPickupPoint(objects[j], objectType.first);
 
-        if (objectType.first == "star" && color.substr(0, color.find("_")) == "orange") {
-            objectType.first = "patric";
-        }
+        //if (objectType.first == "star" && color.substr(0, color.find("_")) == "orange") {
+        //    objectType.first = "patric";
+        //}
 
         classifier::Object object;
         object.x = optimalPickupPoint.x;
@@ -658,10 +665,10 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
         std::string temp;
         if (objectType.first != "patric") {
             temp = color.substr(0, color.find("_")) + " ";
-            std::cout << color.substr(0, color.find("_")) << " ";
+            //std::cout << color.substr(0, color.find("_")) << " ";
         }
         //detectedObjects.push_back(temp + objectType.first);
-        std::cout << objectType.first << " (" << objectType.second << ") at: " << "X: " << object.x << ", Y: " << object.y << ", Z: " << object.z <<  std::endl;
+        //std::cout << objectType.first << " (" << objectType.second << ") at: " << "X: " << object.x << ", Y: " << object.y << ", Z: " << object.z <<  std::endl;
 
 
         object.color = color.substr(0, color.find("_"));
@@ -669,11 +676,34 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
 
 
         object_pub.publish(object);
+        detectedObjects.push_back(std::make_pair(object.color, object.type));
 
         //boost::filesystem::path dir(ros::package::getPath("test_classifier") + "/Data/Maze/" + object.color + "/nothing");
         //boost::filesystem::create_directories(dir);
         //pcl::io::savePCDFileBinary(ros::package::getPath("test_classifier") + "/Data/Maze/" + object.color + "/nothing/" + getFileName(object.color) + ".pcd", *input_cloud);
     }
+
+    std::cout << "[";
+	for (size_t i = 0; i < detectedObjects.size(); i++) {
+        if (detectedObjects[i].first == "green") {
+            std::cout << textColor::green;
+        } else if (detectedObjects[i].first == "blue") {
+            std::cout << textColor::blue;
+        } else if (detectedObjects[i].first == "red") {
+            std::cout << textColor::red;
+        } else if (detectedObjects[i].first == "purple") {
+            std::cout << textColor::lightPurple;
+        } else if (detectedObjects[i].first == "yellow") {
+            std::cout << textColor::yellow;
+        } else if (detectedObjects[i].first == "orange") {
+            std::cout << textColor::lightRed;
+        }
+        std::cout << " " << detectedObjects[i].first << " " << detectedObjects[i].second << textColor::normal;
+		if (i != detectedObjects.size()-1) {
+            std::cout << ",";
+		}
+	}
+    std::cout << " ]" << std::endl;
 
     // Obstacles
     if (cloud->size() == 0) {
@@ -683,10 +713,18 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
     // Transform
     pcl::transformPointCloud(*cloud, *cloud, translation, rotation);
 
+    // Remove objects
     for (size_t i = 0; i < colors.size(); i++) {
         pcl_rgb::Ptr temp (new pcl_rgb);
         PointCloudHelper::HSVFilter(cloud, temp, colors[i]);
     }
+
+    // Remove booby trap
+    //pcl_rgb::Ptr temp (new pcl_rgb);
+    //PointCloudHelper::HSVFilter(cloud, temp, boobyTrapColor);
+
+    // Remove walls
+    // TODO
 
     if (cloud->size() == 0) {
         return;

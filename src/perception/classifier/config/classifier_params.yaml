@@ -28,7 +28,10 @@ purple_types: [ 'cross', 'star' ]
 
 # Remove Outliers
 outlierMaxNeighbours: 20
-outlierStddev: 1.0
+outlierStddev: 1.0#
+
+#
+boobyTrap_color_hsv: { h_min: 0.0, h_max: 100.0, s_min: 0.00, s_max: 0.5, v_min: 0.5, v_max: 1.0 }
 
 # For removing walls
 wall_color_hsv: { h_min: 0.0, h_max: 360.0, s_min: 0.00, s_max: 0.5, v_min: 0.5, v_max: 1.0 }
@@ -59,7 +62,7 @@ red_detectCertaintyLimit: { cube: 1500, ball: 1500, hollow cube: 1500 }
 orange_detectCertaintyLimit: { star: 1500 }
 yellow_detectCertaintyLimit: { cube: 800, ball: 800 }
 green_detectCertaintyLimit: { cube: 1500, cylinder: 1500 }
-blue_detectCertaintyLimit: { cube: 1500, triangle: 1500 }
+blue_detectCertaintyLimit: { cube: 1500, triangle: 2000 }
 purple_detectCertaintyLimit: { cross: 1500, star: 1500 }
 
 lowCertaintyLimit: 2000.0
