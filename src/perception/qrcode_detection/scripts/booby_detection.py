@@ -121,7 +121,7 @@ class BoobyDetection():
             print("Pickup z position is", self.qr_position.z)
             booby_pickup = PointStamped()
             booby_pickup.header.frame_id = 'wheel_center'
-            booby_pickup.point = Point(booby_x+0.01,booby_y,self.qr_position.z + 4.0)
+            booby_pickup.point = Point(booby_x+0.01,-booby_y,self.qr_position.z + 0.04)
             self.booby_publish.publish(booby_pickup)
 
         

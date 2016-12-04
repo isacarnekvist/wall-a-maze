@@ -411,7 +411,8 @@ class Manipulate():
 			pickupPos_arm.z = pickupPos_arm.z*scale
 
 			aboveGoal_pos = Point(pickupPos_arm.x, pickupPos_arm.y, pickupPos_arm.z + 4.0) #correct 6, include in param file	
-		
+			
+			
 			aboveGoal_state = self.moveToPos_client(aboveGoal_pos, self.move_mode, self.moveDuration_abs, self.interpol_way)
 			print("Moved above goal")
 			if aboveGoal_state.error == True:
@@ -451,7 +452,7 @@ class Manipulate():
 			aboveGoal_state = self.moveToPos_client(aboveGoal_pos, self.move_mode, self.moveDuration_abs, self.interpol_way)
 			
 			# Quit booby without check
-			'''
+			
 			if object_type == 'booby':
 				objectPos_new = self.booby_position
 				if (objectPos_new.point.z-pickupPos_wheelcenter.z) > zTol:
@@ -461,7 +462,7 @@ class Manipulate():
 					self.pump_control(False)
 					self.toInitPos()
 					return False
-			'''
+			
 
 			# Check if picked up	
 			if object_type !='booby':
