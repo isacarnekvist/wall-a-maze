@@ -485,8 +485,6 @@ class Mother:
         elif do.color_str == 'purple' and do.type_str == 'star':
             evidence.object_id = RAS_EVIDENCE.purple_star
 
-        evidence.object_id = do.color_str + '_' + do.type_str
-        
         #Robot frame??
         evidence.object_location.transform.translation.x = do.x
         evidence.object_location.transform.translation.y = do.y
