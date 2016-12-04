@@ -338,7 +338,7 @@ float getObjectDistance(pcl_rgb::Ptr cloud_in) {
 
 std::pair<std::string, float> classify(pcl_rgb::Ptr cloud_in, std::string color) {
     if (getObjectDistance(cloud_in) > classifyMaxDistance) {
-        return std::make_pair<std::string, float>("nope", 9999999999);
+        return std::make_pair<std::string, float>("object", 9999999999);
     }
 
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_xyz (new pcl::PointCloud<pcl::PointXYZ>);
@@ -358,14 +358,18 @@ std::pair<std::string, float> classify(pcl_rgb::Ptr cloud_in, std::string color)
     size_t i = 0;
 
     for (; i < candidates.size(); i++) {
+        /*
         if (certaintyLimits.at(color).find(candidates[i].first) != certaintyLimits.at(color).end() && candidates[i].second > certaintyLimits.at(color).at(candidates[i].first)) {
             return std::make_pair<std::string, float>("nope", candidates[i].second); // We are too unsure to even know if it is an object
         }
+        */
 
         for (size_t j = 0; j < objectTypes[color].size(); j++) {
             if (candidates[i].first == objectTypes[color][j]) {
-                object = objectTypes[color][j];
-                break;
+                if (certaintyLimits.at(color).find(objectTypes[color][j]) != certaintyLimits.at(color).end() && candidates[i].second < certaintyLimits.at(color).at(objectTypes[color][j])) {
+                    object = objectTypes[color][j];
+                    break;
+                }
             }
         }
 
@@ -375,12 +379,37 @@ std::pair<std::string, float> classify(pcl_rgb::Ptr cloud_in, std::string color)
     }
 
     if (object == "nope") {
+        for (; i < candidates.size(); i++) {
+            /*
+            if (certaintyLimits.at(color).find(candidates[i].first) != certaintyLimits.at(color).end() && candidates[i].second > certaintyLimits.at(color).at(candidates[i].first)) {
+                return std::make_pair<std::string, float>("nope", candidates[i].second); // We are too unsure to even know if it is an object
+            }
+            */
+
+            for (size_t j = 0; j < objectTypes[color].size(); j++) {
+                if (candidates[i].first == objectTypes[color][j]) {
+                    if (certaintyLimits.at(color).find(objectTypes[color][j]) != certaintyLimits.at(color).end() && candidates[i].second < certaintyLimits.at(color).at(objectTypes[color][j]) + 500) {
+                        object = "object";
+                        break;
+                    }
+                }
+            }
+
+            if (object != "nope") {
+                break;
+            }
+        }
+    }
+
+    if (object == "nope") {
         return std::make_pair<std::string, float>("nope", candidates[i].second); // We are too unsure to even know if it is an object
     }
 
+    /*
     if (candidates[i].second > certaintyLimits.at(color).at(candidates[i].first)) {
         object = "object";    // Too unsure
     }
+    */
 
     return std::make_pair<std::string, float>(object, candidates[i].second);
 }
