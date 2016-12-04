@@ -30,6 +30,7 @@ class Manipulate():
 		rospy.init_node('manipulation_server')
 		 
 		rospy.Subscriber("/perception/trap_position",PointStamped,self.booby_callback)
+		rospy.Subscriber("/motor_controller", Twist, self.motor_callback)
 
 		# Wait for transform
 		self.listener = tf.TransformListener()
@@ -43,7 +44,9 @@ class Manipulate():
 		self.pump_service = rospy.ServiceProxy('/uarm/pump',Pump)
 		
 		#-- Variables --#
-		
+		self.robot_rotation = 1.0
+		self.recent_robot_rotations = []
+
 		# Goal positions
 		self.pickupPos_arm = Point()
 		self.placePos_arm = Point()
@@ -160,6 +163,8 @@ class Manipulate():
 		color = [request.color]
 		objectType = [request.type]
 		
+		if request.type == '':
+			objectType = []
 
 		try:
 			get_objectPos = rospy.ServiceProxy('find_object', Find_Object)
@@ -209,10 +214,10 @@ class Manipulate():
 		move_angular = Twist()
 		yTol = 0.02
 		times_rotated = 0
+		move_angular.angular.z = self.robot_rotation * 1.0 # m/s
 
 		while times_rotated < 10:
 			objectPos = self.booby_position
-			move_angular.angular.z = 1.0 # m/s
 			
 			# Turn opposite
 			if times_rotated > 3:
@@ -260,12 +265,13 @@ class Manipulate():
 
 		yTol = 0.02
 		xTol = 0.10
-		xAim = 0.26
+		xAim = 0.30
 		
 		move_angular = Twist()
 		move_linear = Twist()
 	
 		times_rotated = 0
+		move_angular.angular.z = self.robot_rotation * 1.0 # m/s
 
 		while times_rotated < 12:
 			
@@ -273,7 +279,6 @@ class Manipulate():
 
 			if objectPos == False:
 				print("Rotate")
-				move_angular.angular.z = 1.0 # m/s
 				self.wheels_pub.publish(move_angular)		
 				times_rotated += 1
 				print("Times rotated {}".format(times_rotated))
@@ -300,7 +305,7 @@ class Manipulate():
 				print("Stopped rotating, object at y={}".format(self.pickupPos_wheel.y))
 				
 				while objectPos.point.x > xAim:
-					move_linear.linear.x = 0.10 # m/s
+					move_linear.linear.x = 0.10  # m/s
 					self.wheels_pub.publish(move_linear)
 					print("X offset is {}".format(objectPos.point.x))
 					objectPos = self.objectPos_client(request, select=True)
@@ -491,6 +496,16 @@ class Manipulate():
 			self.booby_position = data	
 			self.booby_detected = True
 		
+
+	def motor_callback(self, data):
+		
+		self.recent_robot_rotations.append(data.angular.z)
+		self.recent_robot_rotations = self.recent_robot_rotations[-300:]
+ 
+		if sum(np.sign(self.recent_robot_rotations)) > 0.0:
+			self.robot_rotation = -1.0
+		else:
+			self.robot_rotation = 1.0
 
 if __name__ == "__main__":
 	Manipulate()
