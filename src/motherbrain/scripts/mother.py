@@ -17,7 +17,7 @@ from std_msgs.msg import String, Bool
 from sensor_msgs.msg import Image
 from ras_msgs.msg import RAS_Evidence
 #from planner.msg import PlannerTarget
-from geometry_msgs.msg import PoseStamped, PointStamped, TransformStamped, Point, polyStamped
+from geometry_msgs.msg import PoseStamped, PointStamped, TransformStamped, Point, PolygonStamped
 from localization.srv import AddPickable, RemovePickable
 
 from planner.srv import PathPlan
@@ -29,6 +29,16 @@ from manipulation.srv import *
 NON_VISITED = 0
 VISITED = 1
 BLOCKED = 2
+
+REACHED_TARGET = 0
+CANNOT_REACH = 1
+PREEMPTED_OTHER = 2
+
+PLANNER_DICT = {
+    0: 'REACHED_TARGET',
+    1: 'CANNOT_REACH',
+    2: 'PREEMPTED_OTHER'
+}
 
 
 def euclidean(p1, p2):
@@ -48,10 +58,12 @@ def path_length(path, x, y):
 NORMAL = 0
 ROTATING = 1
 CLASSIFYING = 2
+BLOCKING = 3
 CS_STATE_DICT = {
     NORMAL: 'NORMAL',
     ROTATING: 'ROTATING',
-    CLASSIFYING: 'CLASSIFYING'
+    CLASSIFYING: 'CLASSIFYING',
+    BLOCKING: 'BLOCKING',
 }
 
 class ClassifyStateMachine:
@@ -59,9 +71,9 @@ class ClassifyStateMachine:
     def __init__(self):
         self._state = NORMAL
         self.transitions = {
-            NORMAL: [ROTATING],
-            ROTATING: [CLASSIFYING],
-            CLASSIFYING: [NORMAL]
+            NORMAL: [ROTATING, BLOCKING],
+            ROTATING: [CLASSIFYING, BLOCKING],
+            CLASSIFYING: [NORMAL, BLOCKING]
         }
         self.deadline_to_state = (None, None) # a deadline to change state to 2nd element
 
@@ -102,11 +114,20 @@ class Map:
             dtype=int
         )
 
+    def get_state(self, x, y):
+        x_ind, y_ind = self.coords_to_inds(x, y)
+        return self.grid[x_ind, y_ind]
+
     def visit(self, x, y):
         x_ind, y_ind = self.coords_to_inds(x, y)
         starting_position_set_occupied = True
         if x_ind < self.grid.shape[0] and y_ind < self.grid.shape[1]:
             self.grid[x_ind, y_ind] = VISITED
+
+    def block(self, x, y):
+        x_ind, y_ind = self.coords_to_inds(x, y)
+        if x_ind < self.grid.shape[0] and y_ind < self.grid.shape[1]:
+            self.grid[x_ind, y_ind] = BLOCKED
 
     def furthest_free_euclidean(self, x, y):
         x_ind, y_ind = self.coords_to_inds(x, y)
@@ -204,7 +225,6 @@ class Mother:
         sleep(0.5)
 
     def goto(self, x=None, y=None, theta=None):
-        rate = rospy.Rate(10)
         if x is not None:
             goal = PlannerTargetGoal()
             goal.cancel_action = False
@@ -218,16 +238,20 @@ class Mother:
                 goal.ignore_target_theta = False
             self.planner_client.send_goal(goal)
         while not rospy.is_shutdown():
-            if self.planner_client.wait_for_result():
+            yield
+            if self.planner_client.wait_for_result(rospy.Duration(5.0)):
                 break
-            rate.sleep()
         # TODO how to differentiate between preempted and blocked?
-        return self.planner_client.get_result()
+        yield self.planner_client.get_result()
 
     def explore(self):
 
-        #go to the farthest point
-        print('[mother] goto returned:', self.goto(self.map.max_x, self.map.max_y))
+        deadline = rospy.Time.now() + rospy.Duration(3 * 60) # change to 3 minutes!
+
+        x_hell, y_hell = (
+            self.map.max_x - 0.20,
+            self.map.max_y - 0.20
+        )
 
         first_target = True
         rate = rospy.Rate(10)
@@ -235,17 +259,34 @@ class Mother:
             rate.sleep()
         
         while not rospy.is_shutdown():
-            self.publish_visuals()            
-            self.time_back_needed = self.calculate_time_back()
-            #print("time needed to home:", self.time_back_needed)
-            x, y = self.map.closest_free_path(self.x, self.y)
+            if self.map.get_state(x_hell, y_hell) == NON_VISITED:
+                x, y = x_hell, y_hell
+            else:
+                x, y = self.map.closest_free_path(self.x, self.y)
             if x is None or y is None:
                 print('No unexplored places!')
                 break
             while (self.classify_state_machine.state in [ROTATING, CLASSIFYING]
                    and not rospy.is_shutdown()):
                 rate.sleep()
-            print('[mother] goto returned:', self.goto(x, y))
+            for planner_res in self.goto(x, y):
+                self.publish_visuals()            
+                self.time_back_needed = self.calculate_time_back()
+                print("turn back in: :", deadline - (rospy.Time.now() + rospy.Duration(self.time_back_needed)))
+                if deadline - (rospy.Time.now() + rospy.Duration(self.time_back_needed)) < rospy.Duration(0):
+                    self.time_out(contest_stage=0)
+                    exit(0)
+                if planner_res is not None:
+                    break
+            if planner_res.reached_target_state == CANNOT_REACH:
+                self.map.block(x, y)
+            print('[mother] goto({}, {}) returned: {}'.format(x, y, PLANNER_DICT[planner_res.reached_target_state]))
+
+    def time_out(self, contest_stage):
+        self.classify_state_machine.transition_to(BLOCKING)
+        rate = rospy.Rate(1)
+        for _ in self.goto(0.25, 0.25):
+            rate.sleep()
 
     def calculate_time_back(self):
         path_plan_srv = rospy.ServiceProxy('/path_plan', PathPlan)
@@ -261,12 +302,8 @@ class Mother:
         og.info.height = self.map.grid.shape[1]
         og.info.origin.position.x = 0.0
         og.info.origin.position.y = 0.0
-        og.data = 100 * self.map.grid.T.flatten()
-        try:
-            self.grid_publisher.publish(og)
-        except rospy.exceptions.ROSSerializationException:
-            # Don't know why this happens, just return and be happy if it works later
-            return
+        og.data = 100 * self.map.grid.T.flatten() / 2
+        self.grid_publisher.publish(og)
 
     def stop(self):
         goal = PlannerTargetGoal()
@@ -274,6 +311,9 @@ class Mother:
         self.planner_client.send_goal(goal)
 
     def perception_callback(self, data):
+
+        if self.classify_state_machine.state == BLOCKING:
+            return
 
         if self.x is None: # we don't have a position of robot yet
             return
@@ -488,7 +528,7 @@ if __name__ == '__main__':
     rospy.init_node('motherbrain')
     mother = Mother()
     rospy.Subscriber('objectPos_wheelcenter2', classifierObject, mother.perception_callback)
-    rospy.Subscriber('obstaclePos_wheelcenter', polyStamped, mother.battery_callback)
+    rospy.Subscriber('obstaclePos_wheelcenter', PolygonStamped, mother.battery_callback)
     rospy.Subscriber('position', PoseStamped, mother.position_callback)
 
     x, y, theta = None, None, None

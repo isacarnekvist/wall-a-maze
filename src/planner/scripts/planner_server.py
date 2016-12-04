@@ -11,7 +11,7 @@ import rospy
 import numpy as np
 from time import sleep
 from math import atan2
-from planner.srv import PlannerStatus, PathPlan
+from planner.srv import PlannerStatus, PathPlan, BlocksPositions
 from std_msgs.msg import Bool
 from nav_msgs.msg import OccupancyGrid, Path
 from sensor_msgs.msg import LaserScan
@@ -39,6 +39,7 @@ class Planner:
         self.plan = None
         self.updated_obstacles = True
         self.scans = []
+        self.lines = []
         self.x = 0.0
         self.y = 0.0
         self.wheels = rospy.Publisher('motor_controller', Twist, queue_size=10)
@@ -65,12 +66,12 @@ class Planner:
 
     def obstacles_callback(self, data):
         print('Collecting obstacles')
-        lines = []
+        self.lines = []
         for i in range(len(data.points) / 2):
             p1 = data.points[2 * i]
             p2 = data.points[2 * i + 1]
-            lines.append((p1.x, p1.y, p2.x, p2.y))
-        self.grid = lines_to_grid(lines)
+            self.lines.append((p1.x, p1.y, p2.x, p2.y))
+        self.grid = lines_to_grid(self.lines)
         self.grid.expand_obstacles(0.20)
         self.graph = self.grid.to_graph()
         self.updated_obstacles = True
@@ -118,6 +119,26 @@ class Planner:
             # Don't know why this happens, just return and be happy if it works later
             return
 
+    def blocks_positions_callback(self, args):
+        res = Polygon()
+        grid = lines_to_grid(self.lines + [(args.x - 0.03, args.y - 0.03, args.x + 0.03, args.y + 0.03)])
+        grid.expand_obstacles(0.20)
+        graph = grid.to_graph()
+        blocked_with = set()
+        blocked_without = set()
+        for angle in np.linspace(0, 2 * np.pi, 4):
+            check_x = args.x + np.cos(angle) * 0.25
+            check_y = args.y + np.sin(angle) * 0.25
+            plan_without = euler_path_plan(check_x, check_y, 0.25, 0.25, self.grid, self.graph)
+            plan_with = euler_path_plan(check_x, check_y, 0.25, 0.25, grid, graph)
+            if len(plan_with) == 0:
+                blocked_with.add((check_x, check_y))
+            if len(plan_without) == 0:
+                blocked_without.add((check_x, check_y))
+        for x, y in blocked_with - blocked_without:
+            res.points.append(Point32(x, y, 0.0))
+        return res
+
     def laser_callback(self, scans):
         new_scans = []
         for angle in range(180, 360):
@@ -137,6 +158,7 @@ if __name__ == '__main__':
     rospy.Subscriber('position', PoseStamped, planner.position_callback)
     status_service = rospy.Service('planner_ready', PlannerStatus, planner.status_callback)
     path_plan_service = None
+    blocks_positions_service = rospy.Service('/planner/blocks_positions', BlocksPositions, planner.blocks_positions_callback)
     rate = rospy.Rate(10)
     while not rospy.is_shutdown():
         if planner.graph is not None and path_plan_service is None:

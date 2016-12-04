@@ -19,6 +19,10 @@ const static float INF = std::numeric_limits<float>::infinity();
 
 using namespace std;
 
+static const int REACHED_TARGET = 0;
+static const int CANNOT_REACH = 1;
+static const int PREEMPTED_OTHER = 2;
+
 /* LinePlan states */
 enum LINEPLAN_STATE {
     INITIALIZED,
@@ -368,6 +372,8 @@ void PathController::execute_callback(const planner::PlannerTargetGoal::ConstPtr
     ros::Rate r (128);
     if (msg->cancel_action) {
         executing_plan = false;
+        planner::PlannerTargetResult res;
+        res.reached_target_state = PREEMPTED_OTHER;
         server.setSucceeded();
         return;
     }
@@ -384,9 +390,9 @@ void PathController::execute_callback(const planner::PlannerTargetGoal::ConstPtr
 
     int n_sections = srv.response.plan.points.size();
     if (n_sections == 0) {
-        planner::PlannerTargetResult res;
-        res.reached_target = false;
         executing_plan = false;
+        planner::PlannerTargetResult res;
+        res.reached_target_state = CANNOT_REACH;
         server.setSucceeded(res);
         return;
     }
@@ -448,7 +454,7 @@ void PathController::execute_callback(const planner::PlannerTargetGoal::ConstPtr
     }
     stop_motors();
     planner::PlannerTargetResult res;
-    res.reached_target = true;
+    res.reached_target_state = REACHED_TARGET;
     executing_plan = false;
     server.setSucceeded(res);
 }

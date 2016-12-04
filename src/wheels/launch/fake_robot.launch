@@ -8,5 +8,6 @@
 	<!-- Planner -->
 	<node name="planner" pkg="planner" type="planner_server.py" output="screen"/>
 	<node name="fake_robot" pkg="localization" type="fake_robot_node.py" output="screen"/>
+	<node name="planner_executor" pkg="planner" type="path_executor" output="screen"/>
 
 </launch>
