@@ -220,7 +220,7 @@ class Battery:
         self.min_x = min(x1, x2)
         self.max_x = max(x1, x2)
         self.min_y = min(y1, y2)
-        self.max_x = max(y1, y2)
+        self.max_y = max(y1, y2)
 
     def __eq__(self, other):
         if other.min_x < self.min_x - 0.03:
@@ -426,25 +426,53 @@ class Mother:
             rate.sleep()
 
     def battery_callback(self, data):
+        if self.x is None: # we don't have a position of robot yet
+            return
         if self.classify_state_machine.state not in [NORMAL, BATTERY_CONVERGING, BATTERY_CLASSIFYING]:
             return
-
         state = self.classify_state_machine.state
         p1, p2 = data.polygon.points
         battery = Battery(p1.x, p1.y, p2.x, p2.y)
+        do1 = DetectedObject(
+            self.x + p1.x * np.cos(self.theta) - p1.y * np.sin(self.theta),
+            self.y + p1.x * np.sin(self.theta) + p1.y * np.cos(self.theta),
+            p1.z
+        )
+        do2 = DetectedObject(
+            self.x + p2.x * np.cos(self.theta) - p2.y * np.sin(self.theta),
+            self.y + p2.x * np.sin(self.theta) + p2.y * np.cos(self.theta),
+            p2.z
+        )
         if state == NORMAL:
-            #self.classify_state_machine.deadline_to_state = (rospy.Time.now() + rospy.Duration(1), NORMAL)
-            #self.classify_state_machine.transition_to(CLASSIFYING)
+            self.stop()
+            for o in self.batteries:
+                if o == do1 or o == do2: # it has the same position as some other battery
+                return
+            self.classify_state_machine.deadline_to_state = (rospy.Time.now() + rospy.Duration(1), NORMAL)
+            self.classify_state_machine.transition_to(BATTERY_CONVERGING)
             pass
         elif state == BATTERY_CONVERGING:
+            sleep(1)   	
             pass
         elif state == BATTERY_CLASSIFYING:
-            pass
+            self.acknowledge_new_pickable(do1)
+            self.acknowledge_new_pickable(do2)            
+            return
+        else:
+            raise ValueError('[mother] unknown state in perception callback')
+            return
 
     def acknowledge_new_pickable(self, do):
         if do.type_str == 'object':
             print('[mother] ignoring', do.color_str, do.type_str)
             return
+        if do.type_str == None:
+            add_pickable = rospy.ServiceProxy('/map/add_pickable', AddPickable)
+            do.map_id = add_pickable(do.x, do.y)
+            sleep(1) # wait for map to be updated        
+            self.batteries.append(do)
+            return
+
         print('[mother] adding', do.color_str, do.type_str)
         #Add pickable in the map
         sleep(1) # let pf converge
