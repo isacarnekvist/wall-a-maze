@@ -519,6 +519,7 @@ class Mother:
             pass
         elif state == BATTERY_CONVERGING:
             sleep(1)   	
+            self.classify_state_machine.transition_to(BATTERY_CLASSIFYING)
             pass
         elif state == BATTERY_CLASSIFYING:
             self.acknowledge_new_pickable(do1)
