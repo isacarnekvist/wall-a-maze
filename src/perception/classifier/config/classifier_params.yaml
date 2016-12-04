@@ -54,6 +54,14 @@ yellow_certaintyLimit: { cube: 300, ball: 300 }
 green_certaintyLimit: { cube: 1000, cylinder: 1000 }
 blue_certaintyLimit: { cube: 1000, triangle: 1000 }
 purple_certaintyLimit: { cross: 1000, star: 1000 }
+
+red_detectCertaintyLimit: { cube: 1500, ball: 1500, hollow cube: 1500 }
+orange_detectCertaintyLimit: { star: 1500 }
+yellow_detectCertaintyLimit: { cube: 800, ball: 800 }
+green_detectCertaintyLimit: { cube: 1500, cylinder: 1500 }
+blue_detectCertaintyLimit: { cube: 1500, triangle: 1500 }
+purple_detectCertaintyLimit: { cross: 1500, star: 1500 }
+
 lowCertaintyLimit: 2000.0
 highCertaintyLimit: 2000.0
 

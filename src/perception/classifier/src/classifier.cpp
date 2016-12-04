@@ -102,6 +102,7 @@ double clusterTolerance_obstacles, minClusterSize_obstacles, maxClusterSize_obst
 double lowCertaintyLimit, highCertaintyLimit;
 
 std::map<std::string, std::map<std::string, float> > certaintyLimits;
+std::map<std::string, std::map<std::string, float> > detectCertaintyLimits;
 
 Eigen::Vector3f translation;
 Eigen::Quaternionf rotation;
@@ -166,6 +167,10 @@ void initParams(ros::NodeHandle n) {
         std::map<std::string, float> certaintyLimit;
         n.getParam("/" + colorNames[i] + "_certaintyLimit", certaintyLimit);
         certaintyLimits[colorNames[i]] = certaintyLimit;
+
+        std::map<std::string, float> detectCertaintyLimit;
+        n.getParam("/" + colorNames[i] + "_detectCertaintyLimit", detectCertaintyLimit);
+        detectCertaintyLimits[colorNames[i]] = detectCertaintyLimit;
     }
 
     std::string whatTypeOfData;
@@ -337,10 +342,6 @@ float getObjectDistance(pcl_rgb::Ptr cloud_in) {
 }
 
 std::pair<std::string, float> classify(pcl_rgb::Ptr cloud_in, std::string color) {
-    if (getObjectDistance(cloud_in) > classifyMaxDistance) {
-        return std::make_pair<std::string, float>("object", 9999999999);
-    }
-
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_xyz (new pcl::PointCloud<pcl::PointXYZ>);
 
     cloud_xyz->points.resize(cloud_in->points.size());
@@ -357,24 +358,26 @@ std::pair<std::string, float> classify(pcl_rgb::Ptr cloud_in, std::string color)
     std::string object = "nope";
     size_t i = 0;
 
-    for (; i < candidates.size(); i++) {
-        /*
-        if (certaintyLimits.at(color).find(candidates[i].first) != certaintyLimits.at(color).end() && candidates[i].second > certaintyLimits.at(color).at(candidates[i].first)) {
-            return std::make_pair<std::string, float>("nope", candidates[i].second); // We are too unsure to even know if it is an object
-        }
-        */
+    if (getObjectDistance(cloud_in) <= classifyMaxDistance) {
+        for (; i < candidates.size(); i++) {
+            /*
+            if (certaintyLimits.at(color).find(candidates[i].first) != certaintyLimits.at(color).end() && candidates[i].second > certaintyLimits.at(color).at(candidates[i].first)) {
+                return std::make_pair<std::string, float>("nope", candidates[i].second); // We are too unsure to even know if it is an object
+            }
+            */
 
-        for (size_t j = 0; j < objectTypes[color].size(); j++) {
-            if (candidates[i].first == objectTypes[color][j]) {
-                if (certaintyLimits.at(color).find(objectTypes[color][j]) != certaintyLimits.at(color).end() && candidates[i].second < certaintyLimits.at(color).at(objectTypes[color][j])) {
-                    object = objectTypes[color][j];
-                    break;
+            for (size_t j = 0; j < objectTypes[color].size(); j++) {
+                if (candidates[i].first == objectTypes[color][j]) {
+                    if (certaintyLimits.at(color).find(objectTypes[color][j]) != certaintyLimits.at(color).end() && candidates[i].second < certaintyLimits.at(color).at(objectTypes[color][j])) {
+                        object = objectTypes[color][j];
+                        break;
+                    }
                 }
             }
-        }
 
-        if (object != "nope") {
-            break;
+            if (object != "nope") {
+                break;
+            }
         }
     }
 
@@ -389,7 +392,7 @@ std::pair<std::string, float> classify(pcl_rgb::Ptr cloud_in, std::string color)
 
             for (size_t j = 0; j < objectTypes[color].size(); j++) {
                 if (candidates[i].first == objectTypes[color][j]) {
-                    if (certaintyLimits.at(color).find(objectTypes[color][j]) != certaintyLimits.at(color).end() && candidates[i].second < certaintyLimits.at(color).at(objectTypes[color][j]) + 500) {
+                    if (detectCertaintyLimits.at(color).find(objectTypes[color][j]) != detectCertaintyLimits.at(color).end() && candidates[i].second < detectCertaintyLimits.at(color).at(objectTypes[color][j])) {
                         object = "object";
                         break;
                     }
