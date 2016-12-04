@@ -647,7 +647,7 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
         pcl::PointXYZ optimalPickupPoint = PointCloudHelper::getOptimalPickupPoint(objects[j], objectType.first);
 
         if (objectType.first == "star" && color.substr(0, color.find("_")) == "orange") {
-            objectType.first = "patric";
+            //objectType.first = "patric";
         }
 
         classifier::Object object;
