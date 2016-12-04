@@ -17,7 +17,7 @@ from std_msgs.msg import String, Bool
 from sensor_msgs.msg import Image
 from ras_msgs.msg import RAS_Evidence
 #from planner.msg import PlannerTarget
-from geometry_msgs.msg import PoseStamped, PointStamped, TransformStamped, Point, PolygonStamped
+from geometry_msgs.msg import PoseStamped, PointStamped, TransformStamped, Point, PolygonStamped, Twist
 from localization.srv import AddPickable, RemovePickable
 
 from planner.srv import PathPlan
@@ -59,11 +59,15 @@ NORMAL = 0
 ROTATING = 1
 CLASSIFYING = 2
 BLOCKING = 3
+BATTERY_CONVERGING = 4
+BATTERY_CLASSIFYING = 5
 CS_STATE_DICT = {
     NORMAL: 'NORMAL',
     ROTATING: 'ROTATING',
     CLASSIFYING: 'CLASSIFYING',
     BLOCKING: 'BLOCKING',
+    BATTERY_CONVERGING: 'BATTERY_CONVERGING',
+    BATTERY_CLASSIFYING: 'BATTERY_CLASSIFYING',
 }
 
 class ClassifyStateMachine:
@@ -200,6 +204,26 @@ class DetectedObject:
             return False
         return True
 
+class Battery:
+
+    def __init__(self, x1, y1, x2, y2):
+        self.min_x = min(x1, x2)
+        self.max_x = max(x1, x2)
+        self.min_y = min(y1, y2)
+        self.max_x = max(y1, y2)
+
+    def __eq__(self, other):
+        if other.min_x < self.min_x - 0.03:
+            return False
+        if other.max_x > self.max_x + 0.03:
+            return False
+        if other.min_y < self.min_y - 0.03:
+            return False
+        if other.max_y > self.max_y + 0.03:
+            return False
+        return True
+        
+
 
 class Mother:
 
@@ -208,6 +232,7 @@ class Mother:
         self.evidence = rospy.Publisher('/evidence', RAS_Evidence, queue_size=10)
         self.start_time = rospy.Time.now()
         self.grid_publisher = rospy.Publisher('visited_grid', OccupancyGrid, queue_size=10)
+        self.motor_publisher = rospy.Publisher('motor_controller', Twist, queue_size=10)
         self.planner_client = actionlib.SimpleActionClient(
             'path_executor',
             PlannerTargetAction
@@ -220,6 +245,7 @@ class Mother:
         self.y = 0.0
         self.theta = 0.0
         self.possible_objects = []
+        self.batteries = []
         self.classify_state_machine = ClassifyStateMachine()
         # Give ROS a little time to acknowledge publisher, especially for planner        
         sleep(0.5)
@@ -265,14 +291,20 @@ class Mother:
                 x, y = self.map.closest_free_path(self.x, self.y)
             if x is None or y is None:
                 print('No unexplored places!')
+                # pick up something?
+                # return to base!
                 break
-            while (self.classify_state_machine.state in [ROTATING, CLASSIFYING]
+            while (self.classify_state_machine.state not in [NORMAL, BLOCKING]
                    and not rospy.is_shutdown()):
                 rate.sleep()
             for planner_res in self.goto(x, y):
                 self.publish_visuals()            
                 self.time_back_needed = self.calculate_time_back()
-                print("turn back in: :", deadline - (rospy.Time.now() + rospy.Duration(self.time_back_needed)))
+                if self.time_back_needed == np.inf:
+                    self.stop()
+                    print('[mother] infinity time to return (no way back), reset map as a desperate measure?')
+                    return
+                print("turn back in:", deadline - (rospy.Time.now() + rospy.Duration(self.time_back_needed)))
                 if deadline - (rospy.Time.now() + rospy.Duration(self.time_back_needed)) < rospy.Duration(0):
                     self.time_out(contest_stage=0)
                     exit(0)
@@ -312,7 +344,7 @@ class Mother:
 
     def perception_callback(self, data):
 
-        if self.classify_state_machine.state == BLOCKING:
+        if self.classify_state_machine.state not in [NORMAL, ROTATING, CLASSIFYING]:
             return
 
         if self.x is None: # we don't have a position of robot yet
@@ -333,6 +365,7 @@ class Mother:
             if not self.ignore_seen_pickable(do):
                 self.stop()
                 self.classify_state_machine.transition_to(ROTATING)
+                self.backup() # does not seem to work?
                 self.pickup(do, False) # Change this bool depending on contest stage
 
                 self.classify_state_machine.deadline_to_state = (rospy.Time.now() + rospy.Duration(1), NORMAL)
@@ -351,25 +384,55 @@ class Mother:
             raise ValueError('[mother] unknown state in perception callback')
             return
 
-    def battery_callback(self, data):
+    def backup(self):
+        # the idea is that once seeing an object, it might be a good
+        # idea to back up a little bit since we cannot stop immediately
+        # when spotting an object
+        print('trying to back up')
+        back = Twist()
+        back.linear.x = -0.1
+        back.angular.z = 0.0
+        rate = rospy.Rate(32)
+        deadline = rospy.Time.now() + rospy.Duration(1)
+        while rospy.Time.now() < deadline:
+            self.motor_publisher.publish(back)
+            rate.sleep()
+        self.motor_publisher.publish(Twist())
 
-        if self.x is None: # we don't have a position of robot yet
+    def dummy(self):
+        class MockMotorPub:
+            def publish(self, x):
+                pass
+        self.backup = lambda: None
+        self.pickup = lambda: None
+        self.motor_publisher = MockMotorPub()
+        rate = rospy.Rate(10)
+        while not rospy.is_shutdown():
+            rate.sleep()
+
+    def battery_callback(self, data):
+        if self.classify_state_machine.state not in [NORMAL, BATTERY_CONVERGING, BATTERY_CLASSIFYING]:
             return
 
-        do = DetectedObject(
-            self.x + data.polygon.points[1].x + data.polygon.points[2].x,
-            self.y + data.polygon.points[1].y + data.polygon.points[2].y,
-            0
-        )
-
-        #if self.classify_state_machine.state == ROTATING:
+        p1, p2 = data.polygon.points
+        battery = Battery(p1.x, p1.y, p2.x, p2.y)
+        #if self.x is None: # we don't have a position of robot yet
         #    return
 
-        #Add pickable in the map
-        sleep(1) # let pf converge
-        add_pickable = rospy.ServiceProxy('/map/add_pickable', AddPickable)
-        do.map_id = add_pickable(do.x, do.y)
-        sleep(1) # wait for map to be updated
+        #do = DetectedObject(
+        #    self.x + data.polygon.points[1].x + data.polygon.points[2].x,
+        #    self.y + data.polygon.points[1].y + data.polygon.points[2].y,
+        #    0
+        #)
+
+        ##if self.classify_state_machine.state == ROTATING:
+        ##    return
+
+        ##Add pickable in the map
+        #sleep(1) # let pf converge
+        #add_pickable = rospy.ServiceProxy('/map/add_pickable', AddPickable)
+        #do.map_id = add_pickable(do.x, do.y)
+        #sleep(1) # wait for map to be updated
 
 
     def acknowledge_new_pickable(self, do):
@@ -523,6 +586,9 @@ if __name__ == '__main__':
     stop_parser = subparsers.add_parser('stop', help='send stop request to planner')
     stop_parser.set_defaults(which='stop')
 
+    dummy_parser = subparsers.add_parser('dummy', help='do nothing except listen to callbacks')
+    dummy_parser.set_defaults(which='dummy')
+
     args = parser.parse_args()
 
     rospy.init_node('motherbrain')
@@ -542,6 +608,9 @@ if __name__ == '__main__':
     elif args.which == 'stop':
         mother.object_target = 'dummy ugly hack'
         mother.stop()
+    elif args.which == 'dummy':
+        mother.object_target = 'dummy ugly hack'
+        mother.dummy()
     else:
         raise NotImplementedError('Only goto implemented atm')
 

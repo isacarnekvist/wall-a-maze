@@ -35,6 +35,7 @@ enum LINEPLAN_STATE {
     DONE,
     OBSTRUCTED_BACKING,
     OBSTRUCTED_CONVERGING,
+    OBSTRUCTED_FORWARD,
     WAITING_REPLAN
 };
 
@@ -103,6 +104,8 @@ public:
     bool updated_map;
     vector<geometry_msgs::Point32> scans;
     bool executing_plan;
+    void evade_obstruction();
+    void evade_forward();
     void execute_callback(const planner::PlannerTargetGoal::ConstPtr &msg);
     void position_callback(const geometry_msgs::PoseStamped::ConstPtr &msg);
     void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg);
@@ -230,6 +233,38 @@ bool PathController::line_control(LinePlan &lp) {
     return false;
 }
 
+void PathController::evade_obstruction() {
+    float closest_angle;
+    float closest_value = INF;
+    for (const geometry_msgs::Point32 &p : scans) {
+        if (p.x < 0) continue;
+        if (euclidean(p.x, p.y) < closest_value) {
+            closest_angle = atan2(p.y, p.x);
+            closest_value = euclidean(p.x, p.y);
+        }
+    }
+    // on right side
+    if (closest_angle > 0.8) {
+        publish_twist(-0.1, -1.0);
+    } else if (closest_angle < -0.8) { // left side
+        publish_twist(-0.1, 1.0);
+    } else {
+        publish_twist(-0.1, 0); // in front
+    }
+}
+
+void PathController::evade_forward() {
+    float x_min = INF;
+    for (const geometry_msgs::Point32 &p : scans) {
+        if (p.x < 0) continue;
+        if (abs(p.y) > 0.10) continue;
+        x_min = min(x_min, p.x);
+    }
+    if (x_min > 0.20) {
+        publish_twist(0.1, 0.0);
+    }
+}
+
 void PathController::execute_plan(LinePlan &lp) {
     float distance_to_target;
     float theta_correction;
@@ -276,7 +311,7 @@ void PathController::execute_plan(LinePlan &lp) {
     case EXECUTING_LINE:
         if (path_is_obstructed(lp)) {
             lp.deadline = ros::Time::now() + ros::Duration(1.0);
-            publish_twist(-0.1, 0);
+            evade_obstruction();
             cerr << "[path_executor] Switching to state OBSTRUCTED_BACKING" << endl;
             lp.state = OBSTRUCTED_BACKING;
             break;
@@ -321,6 +356,15 @@ void PathController::execute_plan(LinePlan &lp) {
         }
         break;
     case OBSTRUCTED_BACKING:
+        if (ros::Time::now() >= lp.deadline) {
+            cerr << "[path_executor] Switching to state OBSTRUCTED_FORWARD" << endl;
+            publish_twist(0, 0);
+            lp.deadline = ros::Time::now() + ros::Duration(1.0);
+            lp.state = OBSTRUCTED_FORWARD;
+            evade_forward();
+        }
+        break;
+    case OBSTRUCTED_FORWARD:
         if (ros::Time::now() >= lp.deadline) {
             cerr << "[path_executor] Switching to state OBSTRUCTED_CONVERGING" << endl;
             publish_twist(0, 0);
@@ -374,7 +418,7 @@ void PathController::execute_callback(const planner::PlannerTargetGoal::ConstPtr
         executing_plan = false;
         planner::PlannerTargetResult res;
         res.reached_target_state = PREEMPTED_OTHER;
-        server.setSucceeded();
+        server.setSucceeded(res);
         return;
     }
     while (executing_plan && ros::ok()) {
@@ -421,7 +465,9 @@ void PathController::execute_callback(const planner::PlannerTargetGoal::ConstPtr
         if (server.isPreemptRequested()) {
             cerr << "[path_executor] was preempted" << endl;
             stop_motors();
-            server.setAborted();
+            planner::PlannerTargetResult res;
+            res.reached_target_state = PREEMPTED_OTHER;
+            server.setSucceeded(res);
             executing_plan = false;
             return;
         }
