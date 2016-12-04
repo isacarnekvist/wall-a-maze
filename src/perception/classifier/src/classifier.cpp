@@ -338,7 +338,7 @@ float getObjectDistance(pcl_rgb::Ptr cloud_in) {
 
 std::pair<std::string, float> classify(pcl_rgb::Ptr cloud_in, std::string color) {
     if (getObjectDistance(cloud_in) > classifyMaxDistance) {
-        return std::make_pair<std::string, float>("nope", 9999999999);
+        return std::make_pair<std::string, float>("object", 9999999999);
     }
 
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_xyz (new pcl::PointCloud<pcl::PointXYZ>);
@@ -358,14 +358,18 @@ std::pair<std::string, float> classify(pcl_rgb::Ptr cloud_in, std::string color)
     size_t i = 0;
 
     for (; i < candidates.size(); i++) {
+        /*
         if (certaintyLimits.at(color).find(candidates[i].first) != certaintyLimits.at(color).end() && candidates[i].second > certaintyLimits.at(color).at(candidates[i].first)) {
             return std::make_pair<std::string, float>("nope", candidates[i].second); // We are too unsure to even know if it is an object
         }
+        */
 
         for (size_t j = 0; j < objectTypes[color].size(); j++) {
             if (candidates[i].first == objectTypes[color][j]) {
-                object = objectTypes[color][j];
-                break;
+                if (certaintyLimits.at(color).find(objectTypes[color][j]) != certaintyLimits.at(color).end() && candidates[i].second < certaintyLimits.at(color).at(objectTypes[color][j])) {
+                    object = objectTypes[color][j];
+                    break;
+                }
             }
         }
 
@@ -375,12 +379,38 @@ std::pair<std::string, float> classify(pcl_rgb::Ptr cloud_in, std::string color)
     }
 
     if (object == "nope") {
+        i = 0;
+        for (; i < candidates.size(); i++) {
+            /*
+            if (certaintyLimits.at(color).find(candidates[i].first) != certaintyLimits.at(color).end() && candidates[i].second > certaintyLimits.at(color).at(candidates[i].first)) {
+                return std::make_pair<std::string, float>("nope", candidates[i].second); // We are too unsure to even know if it is an object
+            }
+            */
+
+            for (size_t j = 0; j < objectTypes[color].size(); j++) {
+                if (candidates[i].first == objectTypes[color][j]) {
+                    if (certaintyLimits.at(color).find(objectTypes[color][j]) != certaintyLimits.at(color).end() && candidates[i].second < certaintyLimits.at(color).at(objectTypes[color][j]) + 500) {
+                        object = "object";
+                        break;
+                    }
+                }
+            }
+
+            if (object != "nope") {
+                break;
+            }
+        }
+    }
+
+    if (object == "nope") {
         return std::make_pair<std::string, float>("nope", candidates[i].second); // We are too unsure to even know if it is an object
     }
 
+    /*
     if (candidates[i].second > certaintyLimits.at(color).at(candidates[i].first)) {
         object = "object";    // Too unsure
     }
+    */
 
     return std::make_pair<std::string, float>(object, candidates[i].second);
 }
@@ -663,86 +693,44 @@ void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& input
     // Segmentation
     objects = PointCloudHelper::segmentation(cloud, clusterTolerance_obstacles, minClusterSize_obstacles, maxClusterSize_obstacles);
 
-    pcl::PointXYZ minX, maxX, minY, maxY;
     for (size_t i = 0; i < objects.size(); i++) {
         pcl::PointXYZRGB min_p, max_p;
 
         pcl::getMinMax3D(*objects[i], min_p, max_p);
 
-        if (true) {
+        geometry_msgs::PolygonStamped poly;
+
+        geometry_msgs::Point32 point[2];
+
+        point[0].x = -1;
+        point[0].y = min_p.x;
+        point[1].x = -1;
+        point[1].y = max_p.x;
+
+        if (false) {
             // Naive
-            geometry_msgs::PolygonStamped poly;
-
-            geometry_msgs::Point32 point[2];
-
             point[0].x = min_p.z;
-            point[0].y = min_p.x;
             point[1].x = max_p.z;
-            point[1].y = max_p.x;
-
-            poly.polygon.points.push_back(point[0]);
-            poly.polygon.points.push_back(point[1]);
-
-            // Publish x = z and y = x
-            obstacle_pub.publish(poly);
         } else {
-            // Advanced
-            float min, max;
-            float height = max_p.y - min_p.y;
-            if (height > 0.02) {
-                min = min_p.y + (height/2.0) - 0.005;
-                max = max_p.y - (height/2.0) + 0.005;
-            } else {
-                // TODO: Make better
-                max = max_p.y;
-                min = min_p.y;
-            }
-
-            pcl::PassThrough<pcl::PointXYZRGB> pass;
-            pass.setInputCloud (objects[i]);
-            pass.setFilterFieldName ("y");
-            pass.setFilterLimits (max, min);
-            pass.filter(*objects[i]);
-
-            // Find line
-            std::vector<std::pair<geometry_msgs::Point32, geometry_msgs::Point32> > lines;
             for (size_t p = 0; p < objects[i]->size(); p++) {
-                geometry_msgs::Point32 newPoint;
-                newPoint.x = objects[i]->points[p].z;
-                newPoint.y = objects[i]->points[p].x;
-
-                bool added = false;
-
-                for (size_t j = 0; j < lines.size(); j++) {
-                    if (lines[j].first.x == lines[j].second.x && lines[j].first.y == lines[j].second.y) {
-                        // This only has a start
-                        lines[j] = std::make_pair<geometry_msgs::Point32, geometry_msgs::Point32>(lines[j].first, newPoint);
-                        added = true;
-                        break;
-                    } else {
-                        // TODO: Check if the angel is too high!
-
-                    }
+                if (points[0].x < 0 && objects[i]->points[p].x == min_p.x) {
+                    point[0].x = objects[i]->points[p].z;
+                }
+                if (points[1].x < 0 && objects[i]->points[p].x == max_p.x) {
+                    points[1].x = objects[i]->points[p].z;
                 }
 
-                if (!added) {
-                    lines.push_back(std::make_pair<geometry_msgs::Point32, geometry_msgs::Point32>(newPoint, newPoint));
+                if (points[0].x > 0 && points[1].x > 0) {
+                    break;
                 }
-            }
-
-            for (size_t j = 0; j < lines.size(); j++) {
-                if (lines[j].first.x == lines[j].second.x && lines[j].first.y == lines[j].second.y) {
-                    continue;
-                }
-
-                geometry_msgs::PolygonStamped poly;
-
-                poly.polygon.points.push_back(lines[j].first);
-                poly.polygon.points.push_back(lines[j].second);
-
-                obstacle_pub.publish(poly);
             }
         }
+
+        poly.polygon.points.push_back(point[0]);
+        poly.polygon.points.push_back(point[1]);
+
+        // Publish x = z and y = x
+        obstacle_pub.publish(poly);
     }
 }
 
