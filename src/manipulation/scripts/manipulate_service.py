@@ -165,6 +165,8 @@ class Manipulate():
 		
 		if request.type == '':
 			objectType = []
+		if request.color == '':
+			color = []
 
 		try:
 			get_objectPos = rospy.ServiceProxy('find_object', Find_Object)
