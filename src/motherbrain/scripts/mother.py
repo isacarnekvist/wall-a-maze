@@ -460,7 +460,7 @@ class Mother:
         evidence = RAS_Evidence()
         evidence.group_number = 6
         evidence. image_evidence = image
-        if do.color_str == 'orange':
+        if do.color_str == 'orange' and do.type_str == 'star':
             evidence.object_id = RAS_EVIDENCE.patric
         elif do.color_str == 'red' and do.type_str == 'cube':
             evidence.object_id = RAS_EVIDENCE.red_cube
@@ -480,7 +480,10 @@ class Mother:
             evidence.object_id = RAS_EVIDENCE.yellow_cube
         elif do.color_str == 'yellow' and do.type_str == 'ball':
             evidence.object_id = RAS_EVIDENCE.yellow_ball
-
+        elif do.color_str == 'purple' and do.type_str == 'cross':
+            evidence.object_id = RAS_EVIDENCE.purple_cross
+        elif do.color_str == 'purple' and do.type_str == 'star':
+            evidence.object_id = RAS_EVIDENCE.purple_star
 
         evidence.object_id = do.color_str + '_' + do.type_str
         
