@@ -408,7 +408,7 @@ class Manipulate():
 				
 	def pickup(self,request,object_type):
 		num_tries = 0
-		max_tries = 1
+		max_tries = 3
 		zTol = 0.02	# [m]
 
 		# ToDo: Add multiple probing, but see first how behaves when multiple times going down!
@@ -457,6 +457,12 @@ class Manipulate():
 				print("Hacked ball")
 				objectPos.point.x = objectPos.point.x + 0.02
 			
+			if num_tries == 1:
+				objectPos.point.x = objectPos.point.x + 0.015
+				print("Second try, trying further away")
+			if num_tries == 2:
+				objectPos.point.x = objectPos.point.x - 0.015
+				print("Second try, trying further away")
 			'''
 			if self.pickup_type != 'booby':
 				correct_x = ['cylinder', 'star', 'cross', 'triangle', 'hollow cube']
@@ -535,8 +541,10 @@ class Manipulate():
 			if object_type !='booby':
 				objectPos_new = self.objectPos_client(request,select=False)
 				if objectPos_new == False:
-					print("No object seen at check time")
-					return True
+					objectPos_new = self.objectPos_client(request,select=False)
+					if objectPos_new == False:
+						print("No object seen twice after pickup")
+						return True
 
 				
 				print("Object is lifted by {} m".format(objectPos_new.point.z-pickupPos_wheelcenter.z))
