@@ -46,8 +46,8 @@ class Manipulate():
 		#-- Variables --#
 		self.robot_rotation = 1.0
 		self.recent_robot_rotations = []
-		self.pickup_type = ''
-		self.pickup_color = ''
+		self.pickup_type = 'nothing'
+		self.pickup_color = 'nothing'
 
 		# Goal positions
 		self.pickupPos_arm = Point()
@@ -75,6 +75,7 @@ class Manipulate():
 		self.dropPos = Point(0.0, 24.0, 0.0)
 
 		self.toInitPos()
+		self.pump_control(False)
 
 		# Services
 		rospy.Service('manipulation/pickup_object', PickupObject, self.handle_pickup)
@@ -164,8 +165,8 @@ class Manipulate():
 		delta = 100 # Assuming meters
 
 		
-		if request.type == '':
-			objectType = []
+		#if request.type == '':
+		objectType = []
 
 		if request.color == '':
 			color = []
@@ -173,26 +174,18 @@ class Manipulate():
 			color = [request.color]
 
 		if forPickup:
-			objectType = [request.type]
+			color = [self.pickup_color]
+			objectType = [self.pickup_type]
 			
 		print("Looking for object of type {} and color {}".format(objectType, color))	
 		try:
 			get_objectPos = rospy.ServiceProxy('find_object', Find_Object)
 			response = get_objectPos(PointCloud2(),color, objectType)
-			
-			# Check if requested object detected
-			if len(response.x) == 0:
-				print("Lenght of object is zero, quitting")
-				return False
 
 			if not response.x:
 				print("No object passed")
 				return False	
-			#if response.x[0]==0:
-			#	return False
-
 			
-
 			'''
 			# Convert to world frame and check which object it is
 			if select == True:
@@ -218,10 +211,10 @@ class Manipulate():
 			objectPos.header.frame_id = response.header.frame_id
 			objectPos.point = Point(response.x[number],response.y[number],response.z[number])
 			
-			if forPickup:
-				self.pickup_type = response.type
-				self.pickup_color = response.color	
+			self.pickup_type = response.type[number]
+			self.pickup_color = response.color[number]	
 				
+			print("Object position is {}".format(objectPos.point))
 			return objectPos
 		except rospy.ServiceException, e:
 			print("Service call to object position failed")
@@ -312,7 +305,7 @@ class Manipulate():
 
 			else:
 				print("Saw an object!")
-				while objectPos.point.x > xAim:
+				while objectPos.point.x > xAim or abs(objectPos.point.y) > yTol:
 				    if abs(objectPos.point.y) > yTol:
 					    move_angular.angular.z = np.sign(objectPos.point.y)*0.8 # m/s
 					    self.wheels_pub.publish(move_angular)
@@ -434,17 +427,40 @@ class Manipulate():
 					return False
 					break
 
-			print("It is the {}th pickup try".format(num_tries))
+			print("It is the {} th pickup try for type {}".format(num_tries, self.pickup_type))
 			
 			pickupPos_wheelcenter = objectPos.point
 
 			# Hacks for objects
+			if self.pickup_type == 'cylinder':
+				print("Hacked cylinder")
+				objectPos.point.x = objectPos.point.x + 0.025 + 0.01
+			elif self.pickup_type == 'cross':
+				print("Hacked cross")
+				objectPos.point.x = objectPos.point.x + 0.030 + 0.01
+			elif self.pickup_type == 'triangle':
+				print("Hacked triangle")
+				objectPos.point.x = objectPos.point.x + 0.020 + 0.01
+				objectPos.point.z = objectPos.point.z + 0.01
+			elif self.pickup_type == 'cube':
+				print("Hacked cube")
+				objectPos.point.x = objectPos.point.x + 0.01
+			elif self.pickup_type == 'star':
+				print("Hacked star")
+				objectPos.point.x = objectPos.point.x + 0.03 + 0.01
+				objectPos.point.z = objectPos.point.z + 0.01
+			elif self.pickup_type == 'hollow cube':
+				print("Hacked hollow cube")
+				objectPos.point.x = objectPos.point.x + 0.025 + 0.01
+			
+			'''
 			if self.pickup_type != 'booby':
 				correct_x = ['cylinder', 'star', 'cross', 'triangle', 'hollow cube']
+				print("Start hacking, pickup_type is {}".format(self.pickup_type))
 				if self.pickup_type in correct_x:
-					print("Hacked x"	)
+					print("Hacked x")
 					objectPos.point.x = objectPos.point.x + 0.01
-
+			'''
 
 			# Transform to arm frame
 			pickupPos = self.transform_wheelToArm(objectPos)
@@ -515,19 +531,21 @@ class Manipulate():
 				objectPos_new = self.objectPos_client(request,select=False)
 				if objectPos_new == False:
 					return True
-	
-				'''
-				print("Object is lifted by {} m".format(objectPos_new.point.z-pickupPos_wheelcenter.z))
 
+				
+				print("Object is lifted by {} m".format(objectPos_new.point.z-pickupPos_wheelcenter.z))
+				print("PickupPos wheelcenter is".format(pickupPos_wheelcenter.z))
 				if (objectPos_new.point.z-pickupPos_wheelcenter.z) > zTol:
 					print("pickup returns true")
 					return True
-				'''
+				
+				
 			num_tries += 1
 
 			if num_tries == max_tries:
 				self.pump_control(False)
 				self.toInitPos()
+				return False
 			
 	def booby_callback(self,data):
 		if data.point.z < 0.01 or data == None:
