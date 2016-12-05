@@ -19,10 +19,11 @@ Map::Map() {
     readWalls();
 }
 
-int Map::add_pickable(float x, float y) {
+int Map::add_pickable(float x, float y, bool rubbish) {
     pickable_objects[next_pickable_id] = (PickableObject) {
         .x = x,
-        .y = y
+        .y = y,
+        .rubbish = rubbish
     };
     next_pickable_id++;
     return next_pickable_id - 1;

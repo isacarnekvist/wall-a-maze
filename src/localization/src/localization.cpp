@@ -189,9 +189,6 @@ void Localization::publish_map_visualization() {
     }
 
     /* Send pickable objects */
-    wall_marker.color.r = (255.0/255.0);
-    wall_marker.color.g = (255.0/255.0);
-    wall_marker.color.b = (0.0/255.0);
     for (std::pair<const int, PickableObject> &po_pair : map.pickable_objects) {
 
         // angle and distance
@@ -203,6 +200,15 @@ void Localization::publish_map_visualization() {
         wall_marker.scale.y = dist;
         wall_marker.pose.position.x = po_pair.second.x;
         wall_marker.pose.position.y = po_pair.second.y;
+        if (po_pair.second.rubbish) {
+            wall_marker.color.r = (0.0/255.0);
+            wall_marker.color.g = (0.0/255.0);
+            wall_marker.color.b = (255.0/255.0);
+        } else {
+            wall_marker.color.r = (255.0/255.0);
+            wall_marker.color.g = (255.0/255.0);
+            wall_marker.color.b = (0.0/255.0);
+        }
         //wall_marker.text=line_stream.str();
         tf::Quaternion quat; quat.setRPY(0.0,0.0,angle);
         tf::quaternionTFToMsg(quat, wall_marker.pose.orientation);
@@ -262,7 +268,7 @@ void Localization::laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) {
 bool Localization::add_pickable(localization::AddPickable::Request &req,
                                 localization::AddPickable::Response &res)
 {
-    int id = map.add_pickable(req.x, req.y);
+    int id = map.add_pickable(req.x, req.y, req.rubbish);
     publish_updated_obstacles();
     res.id = id;
     return true;

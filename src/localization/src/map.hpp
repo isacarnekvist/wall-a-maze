@@ -28,6 +28,7 @@ typedef struct Wall {
 
 typedef struct PickableObject {
     float x, y;
+    bool rubbish;
 } PickableObject;
 
 class Map {
@@ -39,7 +40,7 @@ public:
     std::vector<Wall> walls;
     std::map<int, PickableObject> pickable_objects;
     int next_pickable_id = 0;
-    int add_pickable(float x, float y);
+    int add_pickable(float x, float y, bool rubbish);
     void remove_pickable(int id);
     float min_x;
     float max_x;
