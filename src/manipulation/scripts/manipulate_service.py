@@ -267,7 +267,7 @@ class Manipulate():
 
 		yTol = 0.02
 		xTol = 0.10
-		xAim = 0.30
+		xAim = 0.26
 		
 		move_angular = Twist()
 		move_linear = Twist()
@@ -275,8 +275,16 @@ class Manipulate():
 		times_rotated = 0
 		move_angular.angular.z = self.robot_rotation * 1.0 # m/s
 
+		start_time_moving = rospy.Time.now()
+		max_duration = rospy.Duration(30.0)
+
 		while times_rotated < 12:
 			
+			if (rospy.Time.now()-start_time_moving) > max_duration:
+				print("Time is over - quitting")
+				return False
+
+
 			objectPos = self.objectPos_client(request, select=True)
 
 			if objectPos == False:
@@ -286,43 +294,54 @@ class Manipulate():
 				print("Times rotated {}".format(times_rotated))
 				rospy.sleep(0.6)
 				self.wheels_pub.publish(Twist())
+				rospy.sleep(0.2)
 
 			else:
 				print("Saw an object!")
-				while abs(objectPos.point.y) > yTol:
-					move_angular.angular.z = np.sign(objectPos.point.y)*0.8 # m/s
-					self.wheels_pub.publish(move_angular)
-					rospy.sleep(0.2)
-					self.wheels_pub.publish(Twist())
-					rospy.sleep(0.2)
-					objectPos = self.objectPos_client(request, select=True)
-					if objectPos == False:
-						print("Object lost while rotating.")
-						self.wheels_pub.publish(Twist())
-						return False
-						break		
-
-				self.wheels_pub.publish(Twist())
-
-				print("Stopped rotating, object at y={}".format(self.pickupPos_wheel.y))
-				start_time_forward = rospy.get_time()
-				max_duration_forward = rospy.Duration(5.0)
-
 				while objectPos.point.x > xAim:
-					move_linear.linear.x = 0.10  # m/s
-					self.wheels_pub.publish(move_linear)
-					print("X offset is {}".format(objectPos.point.x))
-					objectPos = self.objectPos_client(request, select=True)
+				    if abs(objectPos.point.y) > yTol:
+					    move_angular.angular.z = np.sign(objectPos.point.y)*0.8 # m/s
+					    self.wheels_pub.publish(move_angular)
+					    rospy.sleep(0.2)
+					    self.wheels_pub.publish(Twist())
+					    rospy.sleep(0.2)
+					    objectPos = self.objectPos_client(request, select=True)
+					    if objectPos == False:
+						    print("Object lost while rotating.")
+						    self.wheels_pub.publish(Twist())
+						    return False
+						    break		
 
-					if objectPos == False or (rospy.get_time()-start_time_forward) < max_duration_forward :
-						print("Object lost while moving forward or move forward time expired.")
-						self.wheels_pub.publish(Twist())
-						return False
-						break		
+				    self.wheels_pub.publish(Twist())
+
+				    #print("Stopped rotating, object at y={}".format(self.pickupPos_wheel.y))
+				    
+
+				    if objectPos.point.x > xAim:
+					    move_linear.linear.x = 0.10  # m/s
+					    self.wheels_pub.publish(move_linear)
+					    rospy.sleep(0.4)
+					    self.wheels_pub.publish(Twist())
+					    rospy.sleep(0.2)
+					    print("X offset is {}".format(objectPos.point.x))
+					    objectPos = self.objectPos_client(request, select=True)
+
+					
+					    #if (rospy.get_time()-start_time_forward) < max_duration_forward :
+					    #	print("time moving forward expired")
+
+					    if objectPos == False:
+							rospy.sleep(0.4)
+							objectPos = self.objectPos_client(request, select=True)
+							if objectPos == False:
+								print("Object lost twice while moving forward.")
+								self.wheels_pub.publish(Twist())
+								return False
+								break		
 
 				self.wheels_pub.publish(Twist())
-				print("Stopped moving forward, object at x={}".format(objectPos.point.x))
-				break
+				#print("Stopped moving forward, object at x={}".format(objectPos.point.x))
+				#break
 				return True
 		
 		
