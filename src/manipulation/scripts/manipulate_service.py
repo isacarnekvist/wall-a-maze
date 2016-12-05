@@ -419,13 +419,11 @@ class Manipulate():
 				if not self.booby_detected:
 					print("Trap no longer in sight.")
 					return False
-					break				
 			else:
 				objectPos = self.objectPos_client(request, select=True, forPickup=True)
 				if objectPos == False:
 					print("Object no longer in sight!")
 					return False
-					break
 
 			print("It is the {} th pickup try for type {}".format(num_tries, self.pickup_type))
 			
@@ -435,23 +433,29 @@ class Manipulate():
 			if self.pickup_type == 'cylinder':
 				print("Hacked cylinder")
 				objectPos.point.x = objectPos.point.x + 0.025 + 0.01
+				objectPos.point.z = objectPos.point.z + 0.01
 			elif self.pickup_type == 'cross':
 				print("Hacked cross")
 				objectPos.point.x = objectPos.point.x + 0.030 + 0.01
+				objectPos.point.z = objectPos.point.z + 0.01
 			elif self.pickup_type == 'triangle':
 				print("Hacked triangle")
 				objectPos.point.x = objectPos.point.x + 0.020 + 0.01
 				objectPos.point.z = objectPos.point.z + 0.01
 			elif self.pickup_type == 'cube':
 				print("Hacked cube")
-				objectPos.point.x = objectPos.point.x + 0.01
+				objectPos.point.x = objectPos.point.x + 0.03
 			elif self.pickup_type == 'star':
 				print("Hacked star")
-				objectPos.point.x = objectPos.point.x + 0.03 + 0.01
+				objectPos.point.x = objectPos.point.x + 0.025 + 0.01
 				objectPos.point.z = objectPos.point.z + 0.01
 			elif self.pickup_type == 'hollow cube':
 				print("Hacked hollow cube")
 				objectPos.point.x = objectPos.point.x + 0.025 + 0.01
+				objectPos.point.z = objectPos.point.z + 0.01
+			elif self.pickup_type == 'ball':
+				print("Hacked ball")
+				objectPos.point.x = objectPos.point.x + 0.02
 			
 			'''
 			if self.pickup_type != 'booby':
@@ -476,10 +480,10 @@ class Manipulate():
 			
 			
 			aboveGoal_state = self.moveToPos_client(aboveGoal_pos, self.move_mode, self.moveDuration_abs, self.interpol_way)
-			print("Moved above goal")
+			#print("Moved above goal")
 			if aboveGoal_state.error == True:
+				self.toInitPos()
 				return False
-				break
 
 			#print("Moved above goal", aboveGoal_state)
 			
@@ -506,8 +510,8 @@ class Manipulate():
 			atGoal_state = self.moveToPos_client(pickupPos_arm_low,self.move_mode, self.moveDuration_abs, self.interpol_way)
 			if atGoal_state.error == True:
 				self.pump_control(False)
-				return False					
-				break					
+				self.toInitPos()
+				return False										
 
 			# Move back up
 			aboveGoal_pos.z = self.initPos_arm.z #aboveGoal_pos.z + 3.0
@@ -517,8 +521,9 @@ class Manipulate():
 			
 			if object_type == 'booby':
 				objectPos_new = self.booby_position
+				print("ObjectPos_new is {} and pickupPos_wheelcenter is {}".format(objectPos_new, pickupPos_wheelcenter))
 				if (objectPos_new.point.z-pickupPos_wheelcenter.z) > zTol:
-					print("pickup returns true")
+					print("booby pickup returns true")
 					return True
 				else:
 					self.pump_control(False)
@@ -530,6 +535,7 @@ class Manipulate():
 			if object_type !='booby':
 				objectPos_new = self.objectPos_client(request,select=False)
 				if objectPos_new == False:
+					print("No object seen at check time")
 					return True
 
 				
