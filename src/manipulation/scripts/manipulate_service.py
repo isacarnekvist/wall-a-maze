@@ -263,7 +263,7 @@ class Manipulate():
 				return True
 
 
-	def toPickupPos(self,request):
+	def toPickupPos(self, request, setAim=False, xAim=None):
 		# Simple heuristic control:
 		# 1. Rotate until object in line of sight and y=0
 		# 2. Move in x until in pickable/preferred x range
@@ -275,7 +275,11 @@ class Manipulate():
 
 		yTol = 0.02
 		xTol = 0.10
-		xAim = 0.26
+		xAim_current = 0.26
+
+		if setAim:
+			xAim_current = xAim
+			print("Moving to object with xAim = {}".format(xAim))
 		
 		move_angular = Twist()
 		move_linear = Twist()
@@ -305,7 +309,7 @@ class Manipulate():
 
 			else:
 				print("Saw an object!")
-				while objectPos.point.x > xAim or abs(objectPos.point.y) > yTol:
+				while objectPos.point.x > xAim_current or abs(objectPos.point.y) > yTol:
 				    if abs(objectPos.point.y) > yTol:
 					    move_angular.angular.z = np.sign(objectPos.point.y)*0.8 # m/s
 					    self.wheels_pub.publish(move_angular)
@@ -327,7 +331,7 @@ class Manipulate():
 				    #print("Stopped rotating, object at y={}".format(self.pickupPos_wheel.y))
 				    
 
-				    if objectPos.point.x > xAim:
+				    if objectPos.point.x > xAim_current:
 					    move_linear.linear.x = 0.10  # m/s
 					    self.wheels_pub.publish(move_linear)
 					    rospy.sleep(0.4)
@@ -413,6 +417,20 @@ class Manipulate():
 
 		# ToDo: Add multiple probing, but see first how behaves when multiple times going down!
 
+		if self.pickup_type == 'cross':
+			response = self.toPickupPos(request, setAim=True, xAim=0.24)
+			print("Moving forward again for cross")
+			if not response:
+				print("Error correcting pickup pos for cross")
+				return False
+
+		if self.pickup_type == 'star' and self.pickup_color == 'purple':
+			response = self.toPickupPos(request, setAim=True, xAim=0.24)
+			print("Moving forward again for purple cross")
+			if not response:
+				print("Error correcting pickup pos for purple cross")
+				return False
+
 		while num_tries < max_tries:
 			if object_type == 'booby':
 				objectPos = self.booby_position
@@ -422,8 +440,12 @@ class Manipulate():
 			else:
 				objectPos = self.objectPos_client(request, select=True, forPickup=True)
 				if objectPos == False:
-					print("Object no longer in sight!")
-					return False
+					objectPos = self.objectPos_client(request, select=True, forPickup=True)
+					if objectPos == False:
+						print("Object no longer in sight at start of pickup!")
+						self.pump_control(False)
+						self.toInitPos()
+						return False
 
 			print("It is the {} th pickup try for type {}".format(num_tries, self.pickup_type))
 			
@@ -436,18 +458,24 @@ class Manipulate():
 				objectPos.point.z = objectPos.point.z + 0.01
 			elif self.pickup_type == 'cross':
 				print("Hacked cross")
-				objectPos.point.x = objectPos.point.x + 0.030 + 0.01
+				objectPos.point.x = objectPos.point.x + 0.015 + 0.01
 				objectPos.point.z = objectPos.point.z + 0.01
 			elif self.pickup_type == 'triangle':
 				print("Hacked triangle")
 				objectPos.point.x = objectPos.point.x + 0.020 + 0.01
 				objectPos.point.z = objectPos.point.z + 0.01
-			elif self.pickup_type == 'cube':
-				print("Hacked cube")
-				objectPos.point.x = objectPos.point.x + 0.03
+			elif self.pickup_type == 'cube' and self.pickup_color == 'green':
+				print("Hacked green cube")
+				objectPos.point.x = objectPos.point.x + 0.02
+			elif self.pickup_type == 'cube' and self.pickup_color == 'red':
+				print("Hacked red cube")
+				objectPos.point.x = objectPos.point.x + 0.025
+			elif self.pickup_type == 'cube' and self.pickup_color == 'blue':
+				print("Hacked blue cube")
+				objectPos.point.x = objectPos.point.x + 0.01
 			elif self.pickup_type == 'star':
 				print("Hacked star")
-				objectPos.point.x = objectPos.point.x + 0.025 + 0.01
+				objectPos.point.x = objectPos.point.x + 0.015 + 0.01
 				objectPos.point.z = objectPos.point.z + 0.01
 			elif self.pickup_type == 'hollow cube':
 				print("Hacked hollow cube")
@@ -456,6 +484,9 @@ class Manipulate():
 			elif self.pickup_type == 'ball':
 				print("Hacked ball")
 				objectPos.point.x = objectPos.point.x + 0.02
+			elif self.pickup_type == 'hollow cube':
+				print("Hacked hollow cube")
+				objectPos.point.x = objectPos.point.x - 0.01
 			
 			if num_tries == 1:
 				objectPos.point.x = objectPos.point.x + 0.015
