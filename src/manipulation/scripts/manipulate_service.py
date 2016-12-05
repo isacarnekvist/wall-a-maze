@@ -46,6 +46,8 @@ class Manipulate():
 		#-- Variables --#
 		self.robot_rotation = 1.0
 		self.recent_robot_rotations = []
+		self.pickup_type = ''
+		self.pickup_color = ''
 
 		# Goal positions
 		self.pickupPos_arm = Point()
@@ -161,14 +163,19 @@ class Manipulate():
 		delta_current = None
 		delta = 100 # Assuming meters
 
-		color = [request.color]
-		objectType = [request.type]
 		
 		if request.type == '':
 			objectType = []
+
 		if request.color == '':
 			color = []
+		else:
+			color = [request.color]
 
+		if forPickup:
+			objectType = [request.type]
+			
+		print("Looking for object of type {} and color {}".format(objectType, color))	
 		try:
 			get_objectPos = rospy.ServiceProxy('find_object', Find_Object)
 			response = get_objectPos(PointCloud2(),color, objectType)
@@ -421,7 +428,7 @@ class Manipulate():
 					return False
 					break				
 			else:
-				objectPos = self.objectPos_client(request, select=True)
+				objectPos = self.objectPos_client(request, select=True, forPickup=True)
 				if objectPos == False:
 					print("Object no longer in sight!")
 					return False
@@ -432,9 +439,9 @@ class Manipulate():
 			pickupPos_wheelcenter = objectPos.point
 
 			# Hacks for objects
-			if object_type != 'booby':
+			if self.pickup_type != 'booby':
 				correct_x = ['cylinder', 'star', 'cross', 'triangle', 'hollow cube']
-				if request.type in correct_x:
+				if self.pickup_type in correct_x:
 					print("Hacked x"	)
 					objectPos.point.x = objectPos.point.x + 0.01
 
