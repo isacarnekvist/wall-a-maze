@@ -152,7 +152,7 @@ class Manipulate():
 			return DropObjectResponse(True)
 						
 
-	def objectPos_client(self,request,select):
+	def objectPos_client(self,request,select,forPickup=False):
 		rospy.wait_for_service('find_object')	#Does this take long?
 		deltaX = None
 		deltaY = None
@@ -174,6 +174,9 @@ class Manipulate():
 			response = get_objectPos(PointCloud2(),color, objectType)
 			
 			# Check if requested object detected
+			if len(response.x) == 0:
+				print("Lenght of object is zero, quitting")
+				return False
 
 			if not response.x:
 				print("No object passed")
@@ -207,7 +210,11 @@ class Manipulate():
 			objectPos = PointStamped()
 			objectPos.header.frame_id = response.header.frame_id
 			objectPos.point = Point(response.x[number],response.y[number],response.z[number])
-
+			
+			if forPickup:
+				self.pickup_type = response.type
+				self.pickup_color = response.color	
+				
 			return objectPos
 		except rospy.ServiceException, e:
 			print("Service call to object position failed")
@@ -287,7 +294,6 @@ class Manipulate():
 
 
 			objectPos = self.objectPos_client(request, select=True)
-
 			if objectPos == False:
 				print("Rotate")
 				self.wheels_pub.publish(move_angular)		
@@ -308,10 +314,13 @@ class Manipulate():
 					    rospy.sleep(0.2)
 					    objectPos = self.objectPos_client(request, select=True)
 					    if objectPos == False:
-						    print("Object lost while rotating.")
-						    self.wheels_pub.publish(Twist())
-						    return False
-						    break		
+							rospy.sleep(0.4)
+							objectPos = self.objectPos_client(request, select=True)
+							if objectPos == False:							
+								print("Object lost while rotating.")
+								self.wheels_pub.publish(Twist())
+								return False
+								break		
 
 				    self.wheels_pub.publish(Twist())
 
@@ -412,7 +421,7 @@ class Manipulate():
 					return False
 					break				
 			else:
-				objectPos = self.objectPos_client(request,select=True)
+				objectPos = self.objectPos_client(request, select=True)
 				if objectPos == False:
 					print("Object no longer in sight!")
 					return False
