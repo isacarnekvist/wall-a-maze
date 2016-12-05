@@ -3,7 +3,6 @@
 from __future__ import print_function
 
 import os
-import sys
 import pickle
 import argparse
 from time import sleep
@@ -13,8 +12,7 @@ import rospy
 import numpy as np
 import actionlib
 from nav_msgs.msg import OccupancyGrid
-from actionlib_msgs.msg import GoalStatus
-from std_msgs.msg import String, Bool
+from std_msgs.msg import String
 from sensor_msgs.msg import Image
 from ras_msgs.msg import RAS_Evidence
 #from planner.msg import PlannerTarget
@@ -87,24 +85,35 @@ class ClassifyStateMachine:
     def __init__(self):
         self._state = NORMAL
         self.transitions = {
-            NORMAL: [ROTATING, BLOCKING],
+            NORMAL: [ROTATING, BLOCKING, BATTERY_CONVERGING],
             ROTATING: [CLASSIFYING, BLOCKING],
             CLASSIFYING: [NORMAL, BLOCKING],
-            NORMAL: [BATTERY_CONVERGING, BLOCKING],
             BATTERY_CONVERGING: [BATTERY_CLASSIFYING, BLOCKING],
             BATTERY_CLASSIFYING: [NORMAL, BLOCKING]
         }
-        self.deadline_to_state = (None, None) # a deadline to change state to 2nd element
+        self.default_transitions = {
+            BATTERY_CONVERGING: (BATTERY_CLASSIFYING, 1),
+            BATTERY_CLASSIFYING: (NORMAL, 3),
+            CLASSIFYING: (NORMAL, 3),
+        }
+        self.deadline = None
 
     def transition_to(self, state):
-        print('[mother] Transition from state {} to {}'.format(CS_STATE_DICT[self.state], CS_STATE_DICT[state]))
-        if state in self.transitions[self.state]:
-            self.state = state
+        print('[mother] Transition from state {} to {}'.format(CS_STATE_DICT[self._state], CS_STATE_DICT[state]))
+        if state in self.transitions[self._state]:
+            self._state = state
+            if state in self.default_transitions:
+                _, time_limit = self.default_transitions[state]
+                self.deadline = rospy.Time.now() + rospy.Duration(time_limit)
+            else:
+                self.deadline = None
         else:
-            raise ValueError('Transition from {} to {} not allowed'.format(self.state, state))
+            raise ValueError('Transition from {} to {} not allowed'.format(self._state, state))
 
-    @property
-    def state(self):
+    def get_state(self):
+        if self.deadline is not None and self.deadline < rospy.Time.now():
+            fallback_state, _ = self.default_transitions[self._state]
+            self.transition_to(fallback_state)
         return self._state
 
 
@@ -171,6 +180,10 @@ class Map:
                 continue
             x = (i + 0.5) * self.cell_width
             y = (j + 0.5) * self.cell_width
+            if not self.min_x < x < self.max_x:
+                continue
+            if not self.min_y < y < self.max_y:
+                continue
             if np.sqrt((current_x - i * self.cell_width) ** 2 + (current_y - j * self.cell_width) ** 2) > min_path[0]:
                 continue
             path_plan_srv = rospy.ServiceProxy('/path_plan', PathPlan)
@@ -204,30 +217,36 @@ class DetectedObject:
         rospy.wait_for_service('/map/remove_pickable')        
 
     def position_equal(self, other):
-        if abs(self.x - other.x) > 0.2:
+        if abs(self.x - other.x) > 0.3:
             return False
-        if abs(self.y - other.y) > 0.2:
+        if abs(self.y - other.y) > 0.3:
             return False
-        if abs(self.z - other.z) > 0.2:
+        if abs(self.z - other.z) > 0.3:
             return False
         return True
 
     def __eq__(self, other):
         if other.type_str != self.type_str or other.color_str != self.color_str:
             return False
-        if abs(self.x - other.x) > 0.1:
+        if abs(self.x - other.x) > 0.3:
             return False
-        if abs(self.y - other.y) > 0.1:
+        if abs(self.y - other.y) > 0.3:
             return False
-        if abs(self.z - other.z) > 0.1:
+        if abs(self.z - other.z) > 0.3:
             return False
         return True
     
     def pickup_pose(self):
-        theta = np.atan2(self.x - self.robot_x, self.y - self.robot_y)
+        theta = np.arctan2(self.y - self.robot_y, self.x - self.robot_x)
         while theta < 0.0:
             theta += 2 * np.pi
-        return self.robot_x, self.robot_y, theta
+        v = np.array([self.x - self.robot_x, self.y - self.robot_y])
+        y = np.array([self.x, self.y])
+        robot_target = y - 1.3 * v
+        return robot_target[0], robot_target[1], theta
+
+    def __repr__(self):
+        return '{} {} at {}, {}'.format(self.color_str, self.type_str, self.x, self.y)
 
 class Battery:
 
@@ -238,15 +257,18 @@ class Battery:
         self.max_y = max(y1, y2)
 
     def __eq__(self, other):
-        if other.min_x < self.min_x - 0.03:
+        if other.min_x < self.min_x - 0.05:
             return False
-        if other.max_x > self.max_x + 0.03:
+        if other.max_x > self.max_x + 0.05:
             return False
-        if other.min_y < self.min_y - 0.03:
+        if other.min_y < self.min_y - 0.05:
             return False
-        if other.max_y > self.max_y + 0.03:
+        if other.max_y > self.max_y + 0.05:
             return False
         return True
+
+    def __repr__(self):
+        return 'Battery at ({}, {}), ({}, {})'.format(self.min_x, self.min_y, self.max_x, self.max_y)
         
 
 
@@ -295,6 +317,11 @@ class Mother:
         # TODO how to differentiate between preempted and blocked?
         yield self.planner_client.get_result()
 
+    def calculate_priority_scores(self):
+        for do in self.pickables:
+            do.expected_pickup_time = 2 * self.calculate_travel_time(do.x, do.y)
+            do.priority_score = SCORE_DICT[do.type_str] / do.expected_pickup_time
+
     def score(self):
 
         # ignore seen object at this stage
@@ -302,9 +329,19 @@ class Mother:
 
         with open(EXPLORED_OBJECTS_FN, 'rb') as f:
             self.pickables, self.batteries = pickle.load(f)
+
+        for battery in self.batteries:
+            add_pickable = rospy.ServiceProxy('/map/add_pickable', AddPickable)
+            add_pickable(battery.min_x, battery.min_y, True)
+            add_pickable = rospy.ServiceProxy('/map/add_pickable', AddPickable)
+            add_pickable(battery.max_x, battery.max_y, True)
         for do in self.pickables:
-            do.expected_pickup_time = 2 * self.calculate_travel_time(do.robot_x, do.robot_y)
-            do.priority_score = SCORE_DICT[do.type_str] / do.expected_pickup_time
+            add_pickable = rospy.ServiceProxy('/map/add_pickable', AddPickable)
+            do.map_id = add_pickable(do.x, do.y, False)
+
+        sleep(2)
+
+        self.calculate_priority_scores()
 
         deadline = rospy.Time.now() + rospy.Duration(3 * 60)
 
@@ -312,23 +349,34 @@ class Mother:
         while rospy.Time.now() < deadline and ordering:
             current_object = ordering[0]
             ordering = ordering[1:]
+            print('[mother] going for', current_object)
             for planner_res in self.goto(*current_object.pickup_pose()):
                 if planner_res is not None:
                     break
-                if rospy.Time.now() < deadline:
+                if rospy.Time.now() > deadline:
                     self.time_out(contest_stage=1)
                     exit(0)
+            print('[mother] out of approach loop')
             if planner_res.reached_target_state != REACHED_TARGET:
                 continue
             # pickup
+            print('[mother] trying pickup of', current_object)
             for i in range(2):
-                pickup_success = self.pickup(do, True) # Change this bool depending on contest stage
+                print('[mother] calling pickup, try {}/{}'.format(i + 1, 2))
+                pickup_success = self.pickup(current_object, True, False) # Change this bool depending on contest stage
                 if pickup_success:
+                    print('[mother] pickup succeeded')
                     break
+                else:
+                    print('[mother] pickup failed')
             if not pickup_success:
+                self.calculate_priority_scores()
+                ordering = sorted(ordering, key=lambda x: -x.priority_score)
                 continue
+            print('[mother] carrying mode')
             self.carryObject_client(do, True) # Change this bool depending on contest stage
             # go home
+            print('[mother] taking home', current_object)
             for planner_res in self.goto(0.25, 0.25):
                 if planner_res is not None:
                     break
@@ -337,13 +385,19 @@ class Mother:
                     exit(0)
             # drop
             self.dropObject_client()
+            remove_pickable = rospy.ServiceProxy('/map/remove_pickable', RemovePickable)
+            remove_pickable(do.map_id)
+            self.calculate_priority_scores()
+            ordering = sorted(ordering, key=lambda x: -x.priority_score)
             
         self.time_out(contest_stage=1)
 
     def explore(self):
 
-        print('[mother] explore time is set to 3 minutes, should be 5!')
-        deadline = rospy.Time.now() + rospy.Duration(3 * 60) # change to 5 minutes!
+        self.speaker.publish('start')
+
+        # print('[mother] explore time is set to 3 minutes, should be 5!')
+        deadline = rospy.Time.now() + rospy.Duration(5 * 60) # change to 5 minutes!
 
         x_hell, y_hell = (
             self.map.max_x - 0.20,
@@ -358,41 +412,51 @@ class Mother:
             if self.map.get_state(x_hell, y_hell) == NON_VISITED:
                 x, y = x_hell, y_hell
             else:
+                print('[mother] querying for closest free grid')
                 x, y = self.map.closest_free_path(self.x, self.y)
             if x is None or y is None:
                 print('No unexplored places!')
                 # pick up something?
                 # return to base!
+                self.time_out(contest_stage=0)
+                exit(0)
                 break
-            while (self.classify_state_machine.state not in [NORMAL, BLOCKING]
+            print('[mother] current target set to x: {}, y: {}'.format(x, y))
+            while (self.classify_state_machine.get_state() not in [NORMAL, BLOCKING]
                    and not rospy.is_shutdown()):
+                print('[mother] in waiting loop due to state:', CS_STATE_DICT[self.classify_state_machine.get_state()])
                 rate.sleep()
+            print('[mother] entering goto loop with target set to x: {}, y: {}'.format(x, y))
             for planner_res in self.goto(x, y):
+                print('[mother] in goto() loop, planner_res =', planner_res)
                 self.publish_visuals()            
-                self.time_back_needed = self.calculate_time_back()
-                if self.time_back_needed == np.inf:
-                    self.stop()
-                    print('[mother] infinity time to return (no way back), reset map as a desperate measure')
-                    rospy.ServiceProxy('/map/reset_map', ResetMap)()
-                    for do in self.pickables:
-                        add_pickable = rospy.ServiceProxy('/map/add_pickable', AddPickable)
-                        do.map_id = add_pickable(do.x, do.y)
-                    sleep(1)
-                    break
-                print("turn back in:", deadline - (rospy.Time.now() + rospy.Duration(self.time_back_needed)))
-                if deadline - rospy.Time.now() < rospy.Duration(0):
+                #self.time_back_needed = self.calculate_time_back()
+                #if self.time_back_needed == np.inf:
+                #    self.stop()
+                #    print('[mother] infinity time to return (no way back), reset map as a desperate measure')
+                #    rospy.ServiceProxy('/map/reset', ResetMap)()
+                #    for do in self.pickables:
+                #        add_pickable = rospy.ServiceProxy('/map/add_pickable', AddPickable)
+                #        do.map_id = add_pickable(do.x, do.y)
+                #    sleep(1)
+                #    continue
+                if deadline < rospy.Time.now():
+                    print('[mother] time is up')
                     self.time_out(contest_stage=0)
                     exit(0)
                 if planner_res is not None:
                     break
-            if planner_res.reached_target_state == CANNOT_REACH:
+            if planner_res and planner_res.reached_target_state == CANNOT_REACH:
                 self.map.block(x, y)
-            print('[mother] goto({}, {}) returned: {}'.format(x, y, PLANNER_DICT[planner_res.reached_target_state]))
+            if planner_res is None:
+                print('[mother] goto({}, {}) returned: None'.format(x, y))
+            else:
+                print('[mother] goto({}, {}) returned: {}'.format(x, y, PLANNER_DICT[planner_res.reached_target_state]))
 
     def time_out(self, contest_stage):
         if contest_stage == 0:
             with open(EXPLORED_OBJECTS_FN, 'wb') as f:
-                pickle.dump((self.pickables, self.batteries))
+                pickle.dump((self.pickables, self.batteries), f)
             self.stop()
         if contest_stage == 1:
             self.stop()
@@ -425,7 +489,7 @@ class Mother:
 
     def perception_callback(self, data):
 
-        if self.classify_state_machine.state not in [NORMAL, ROTATING, CLASSIFYING]:
+        if self.classify_state_machine.get_state() not in [NORMAL, ROTATING, CLASSIFYING]:
             return
 
         if self.x is None: # we don't have a position of robot yet
@@ -439,26 +503,28 @@ class Mother:
             data.color
         )
 
-        if self.classify_state_machine.state == ROTATING:
+        if self.classify_state_machine.get_state() == ROTATING:
             return
 
-        elif self.classify_state_machine.state == NORMAL:
+        elif self.classify_state_machine.get_state() == NORMAL:
             if not self.ignore_seen_pickable(do):
                 self.stop()
                 self.classify_state_machine.transition_to(ROTATING)
                 #self.backup()
-                self.pickup(do, False) # Change this bool depending on contest stage
-
-                self.classify_state_machine.deadline_to_state = (rospy.Time.now() + rospy.Duration(1), NORMAL)
+                print('[mother] run rotation (pickup)')
+                self.pickup(do, False, True) # Change this bool depending on contest stage
+                print('[mother] back from rotation (pickup)')
                 self.classify_state_machine.transition_to(CLASSIFYING)
             else:
                 return
 
-        elif self.classify_state_machine.state == CLASSIFYING:
-            if self.classify_state_machine.deadline_to_state[0] < rospy.Time.now():
-                self.classify_state_machine.transition_to(self.classify_state_machine.deadline_to_state[1])
-            elif self.is_new_object(do):
+        elif self.classify_state_machine.get_state() == CLASSIFYING:
+            if self.is_new_object(do):
+                do.robot_x = self.x
+                do.robot_y = self.y
                 self.acknowledge_new_pickable(do)
+            else:
+                print('[mother] ignored already seen object:', do)
             return
 
         else:
@@ -492,63 +558,53 @@ class Mother:
             rate.sleep()
 
     def battery_callback(self, data):
+        # battery heights: 15 cm and 9.5 (7.8 w/o black part) cm
+        # boobytrap heights: 9.8 cm
         if self.x is None: # we don't have a position of robot yet
             return
-        if self.classify_state_machine.state not in [NORMAL, BATTERY_CONVERGING, BATTERY_CLASSIFYING]:
+        if self.classify_state_machine.get_state() not in [NORMAL, BATTERY_CONVERGING, BATTERY_CLASSIFYING]:
             return
-        state = self.classify_state_machine.state
+        state = self.classify_state_machine.get_state()
         p1, p2 = data.polygon.points
-        battery = Battery(p1.x, p1.y, p2.x, p2.y)
-        do1 = DetectedObject(
+        if euclidean(p1, p2) > 0.17:
+            return
+        if euclidean(p1, p2) < 0.05:
+            return
+        battery = Battery(
             self.x + p1.x * np.cos(self.theta) - p1.y * np.sin(self.theta),
             self.y + p1.x * np.sin(self.theta) + p1.y * np.cos(self.theta),
-            p1.z
-        )
-        do2 = DetectedObject(
             self.x + p2.x * np.cos(self.theta) - p2.y * np.sin(self.theta),
             self.y + p2.x * np.sin(self.theta) + p2.y * np.cos(self.theta),
-            p2.z
         )
-        if state == NORMAL:
-            self.stop()
-            for o in self.batteries:
-                if o == do1 or o == do2: # it has the same position as some other battery
+        for o in self.batteries:
+            if battery == o: # it has the same position as some other battery
                 return
-            self.classify_state_machine.deadline_to_state = (rospy.Time.now() + rospy.Duration(1), NORMAL)
+
+        if self.classify_state_machine.get_state() == NORMAL:
+            self.stop()
             self.classify_state_machine.transition_to(BATTERY_CONVERGING)
-            pass
-        elif state == BATTERY_CONVERGING:
-            sleep(1)   	
-            self.classify_state_machine.transition_to(BATTERY_CLASSIFYING)
-            pass
-        elif state == BATTERY_CLASSIFYING:
-            self.acknowledge_new_pickable(do1)
-            self.acknowledge_new_pickable(do2)            
-            return
-        else:
-            raise ValueError('[mother] unknown state in perception callback')
-            return
+        elif self.classify_state_machine.get_state() == BATTERY_CLASSIFYING:
+            self.batteries.append(battery)
+            add_pickable = rospy.ServiceProxy('/map/add_pickable', AddPickable)
+            print('[mother] adding', battery, 'at z = ', p1.z)
+            add_pickable(battery.min_x, battery.min_y, True)
+            add_pickable(battery.max_x, battery.max_y, True)
 
     def acknowledge_new_pickable(self, do):
         if do.type_str == 'object':
             print('[mother] ignoring', do.color_str, do.type_str)
             return
-        if do.type_str == None:
-            add_pickable = rospy.ServiceProxy('/map/add_pickable', AddPickable)
-            do.map_id = add_pickable(do.x, do.y)
-            sleep(1) # wait for map to be updated        
-            self.batteries.append(do)
-            return
 
-        print('[mother] adding', do.color_str, do.type_str)
         #Add pickable in the map
         sleep(1) # let pf converge
         add_pickable = rospy.ServiceProxy('/map/add_pickable', AddPickable)
-        do.map_id = add_pickable(do.x, do.y)
+        do.map_id = add_pickable(do.x, do.y, False)
         sleep(1) # wait for map to be updated
 
         # speak!
         self.speaker.publish('I see a {} {}'.format(do.color_str, do.type_str))
+        print('[mother] adding', do.color_str, do.type_str)
+        print ("[mother] (speaking) I saw", do.color_str, do.type_str, 'at', do.x, do.y, do.z)
 
         #RAS Evidence
         image=rospy.client.wait_for_message('/camera/rgb/image_raw',Image)         
@@ -556,42 +612,41 @@ class Mother:
         evidence.group_number = 6
         evidence. image_evidence = image
         if do.color_str == 'orange' and do.type_str == 'star':
-            evidence.object_id = RAS_EVIDENCE.patric
+            evidence.object_id = RAS_Evidence.patric
         elif do.color_str == 'red' and do.type_str == 'cube':
-            evidence.object_id = RAS_EVIDENCE.red_cube
+            evidence.object_id = RAS_Evidence.red_cube
         elif do.color_str == 'red' and do.type_str == 'hollow cube':
-            evidence.object_id = RAS_EVIDENCE.red_hollow_cube
+            evidence.object_id = RAS_Evidence.red_hollow_cube
         elif do.color_str == 'red' and do.type_str == 'ball':
-            evidence.object_id = RAS_EVIDENCE.red_ball
+            evidence.object_id = RAS_Evidence.red_ball
         elif do.color_str == 'green' and do.type_str == 'cube':
-            evidence.object_id = RAS_EVIDENCE.green_cube
+            evidence.object_id = RAS_Evidence.green_cube
         elif do.color_str == 'green' and do.type_str == 'cylinder':
-            evidence.object_id = RAS_EVIDENCE.green_cylinder
+            evidence.object_id = RAS_Evidence.green_cylinder
         elif do.color_str == 'blue' and do.type_str == 'cube':
-            evidence.object_id = RAS_EVIDENCE.blue_cube
+            evidence.object_id = RAS_Evidence.blue_cube
         elif do.color_str == 'blue' and do.type_str == 'triangle':
-            evidence.object_id = RAS_EVIDENCE.blue_triangle
+            evidence.object_id = RAS_Evidence.blue_triangle
         elif do.color_str == 'yellow' and do.type_str == 'cube':
-            evidence.object_id = RAS_EVIDENCE.yellow_cube
+            evidence.object_id = RAS_Evidence.yellow_cube
         elif do.color_str == 'yellow' and do.type_str == 'ball':
-            evidence.object_id = RAS_EVIDENCE.yellow_ball
+            evidence.object_id = RAS_Evidence.yellow_ball
         elif do.color_str == 'purple' and do.type_str == 'cross':
-            evidence.object_id = RAS_EVIDENCE.purple_cross
+            evidence.object_id = RAS_Evidence.purple_cross
         elif do.color_str == 'purple' and do.type_str == 'star':
-            evidence.object_id = RAS_EVIDENCE.purple_star
+            evidence.object_id = RAS_Evidence.purple_star
 
         #Robot frame??
         evidence.object_location.transform.translation.x = do.x
         evidence.object_location.transform.translation.y = do.y
         evidence.object_location.transform.translation.z = do.z        
         self.evidence.publish(evidence) 
-        print ("I saw", do.color_str, do.type_str, 'at', do.x, do.y, do.z)
 
         do.robot_x = self.x
         do.robot_y = self.y
         self.pickables.append(do)
 
-    def pickup(self, do, do_pickup, ignore_type=False): # do means detected object
+    def pickup(self, do, do_pickup, ignore_type): # do means detected object
         # Call manipulation service
         pickup_location = PointStamped()
         pickup_location.point = Point(
@@ -661,6 +716,9 @@ class Mother:
         if 0.0 < do.x < 0.4 and 0.0 < do.y < 0.4:
             return False
 
+        if do.color_str == "yellow":
+            return False
+
         # Check if already seen
         for o in self.pickables:
             if o == do: # it has the same position and identity as some other _pickable_ object
@@ -670,7 +728,10 @@ class Mother:
     def ignore_seen_pickable(self, do):
         # Object is in starting box
         if 0.0 < do.x < 0.4 and 0.0 < do.y < 0.4:
-            return 
+            return True
+
+        if do.color_str == "yellow":
+            return True
 
         # Check if already seen
         for o in self.pickables:
@@ -738,7 +799,11 @@ if __name__ == '__main__':
         for _ in mother.goto(x=x, y=y, theta=theta):
             rate.sleep()
     elif args.which == 'explore':
-        mother.explore()
+        try:
+            mother.explore()
+        except KeyboardInterrupt as e:
+            mother.time_out(contest_stage=0)
+            raise e
     elif args.which == 'stop':
         mother.object_target = 'dummy ugly hack'
         mother.stop()
