@@ -93,6 +93,7 @@ class Manipulate():
 		if response == False:
 			return PickupTrapResponse(response)
 		else:
+			rospy.sleep(0.5)
 			pickupResponse = self.pickup(request,object_type='booby')
 			return PickupTrapResponse(pickupResponse)
 
@@ -214,7 +215,7 @@ class Manipulate():
 
 	def rotateToBooby(self):
 		move_angular = Twist()
-		yTol = 0.02
+		yTol = 0.03
 		times_rotated = 0
 		move_angular.angular.z = self.robot_rotation * 1.0 # m/s
 
