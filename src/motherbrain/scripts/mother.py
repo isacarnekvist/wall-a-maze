@@ -119,13 +119,13 @@ class ClassifyStateMachine:
 
 class Map:
 
-    def __init__(self):
+    def __init__(self, cell_width=0.4):
         map_path = os.environ.get('MAP_PATH')
         self.min_x = np.inf
         self.max_x = -np.inf
         self.min_y = np.inf
         self.max_y = -np.inf
-        self.cell_width = 0.4
+        self.cell_width = cell_width
         self.starting_position_set_occupied = False;
         with open(map_path, 'r') as f:
             for line in f:
@@ -242,7 +242,7 @@ class DetectedObject:
             theta += 2 * np.pi
         v = np.array([self.x - self.robot_x, self.y - self.robot_y])
         y = np.array([self.x, self.y])
-        robot_target = y - 1.3 * v
+        robot_target = y - 1.2 * v
         return robot_target[0], robot_target[1], theta
 
     def __repr__(self):
@@ -255,6 +255,10 @@ class Battery:
         self.max_x = max(x1, x2)
         self.min_y = min(y1, y2)
         self.max_y = max(y1, y2)
+        self.x1 = x1
+        self.y1 = y1
+        self.x2 = x2
+        self.y2 = y2
 
     def __eq__(self, other):
         if other.min_x < self.min_x - 0.05:
@@ -285,6 +289,7 @@ class Mother:
             PlannerTargetAction
         )
         self.map = Map()
+        self.map_finer = Map()
         self.planner_client.wait_for_server()     
         self.time_back_needed = 0.0
         self.recieved_position = False
@@ -332,18 +337,20 @@ class Mother:
 
         for battery in self.batteries:
             add_pickable = rospy.ServiceProxy('/map/add_pickable', AddPickable)
-            add_pickable(battery.min_x, battery.min_y, True)
+            add_pickable(battery.x1, battery.y1, True)
             add_pickable = rospy.ServiceProxy('/map/add_pickable', AddPickable)
-            add_pickable(battery.max_x, battery.max_y, True)
+            add_pickable(battery.x2, battery.y2, True)
         for do in self.pickables:
             add_pickable = rospy.ServiceProxy('/map/add_pickable', AddPickable)
-            do.map_id = add_pickable(do.x, do.y, False)
+            do.map_id = add_pickable(do.x, do.y, False).id
 
         sleep(2)
 
         self.calculate_priority_scores()
 
         deadline = rospy.Time.now() + rospy.Duration(3 * 60)
+
+        self.speaker.publish('start')
 
         ordering = sorted(self.pickables, key=lambda x: -x.priority_score)
         while rospy.Time.now() < deadline and ordering:
@@ -363,26 +370,25 @@ class Mother:
             print('[mother] trying pickup of', current_object)
             for i in range(2):
                 print('[mother] calling pickup, try {}/{}'.format(i + 1, 2))
-                pickup_success = self.pickup(current_object, True, False) # Change this bool depending on contest stage
+                pickup_success = self.pickup(current_object, True, False).success # Change this bool depending on contest stage
+                print('[mother] pickup returned', pickup_success)
                 if pickup_success:
-                    print('[mother] pickup succeeded')
                     break
-                else:
-                    print('[mother] pickup failed')
+            print('before pickup_success check', pickup_success)
             if not pickup_success:
+                print('not pickup_success')
                 self.calculate_priority_scores()
                 ordering = sorted(ordering, key=lambda x: -x.priority_score)
                 continue
             print('[mother] carrying mode')
-            self.carryObject_client(do, True) # Change this bool depending on contest stage
+            self.carryObject_client() # Change this bool depending on contest stage
+            self.stop()
+            sleep(1)
             # go home
             print('[mother] taking home', current_object)
             for planner_res in self.goto(0.25, 0.25):
                 if planner_res is not None:
                     break
-                if rospy.Time.now() < deadline:
-                    self.time_out(contest_stage=1)
-                    exit(0)
             # drop
             self.dropObject_client()
             remove_pickable = rospy.ServiceProxy('/map/remove_pickable', RemovePickable)
@@ -566,9 +572,12 @@ class Mother:
             return
         state = self.classify_state_machine.get_state()
         p1, p2 = data.polygon.points
-        if euclidean(p1, p2) > 0.17:
+        print('battery euclidean', euclidean(p1, p2))
+        #if euclidean(p1, p2) > 0.17:
+        if abs(p1.y - p2.y) > 0.15:        
             return
-        if euclidean(p1, p2) < 0.05:
+        #if euclidean(p1, p2) < 0.063:
+        if abs(p1.y - p2.y) < 0.063:
             return
         battery = Battery(
             self.x + p1.x * np.cos(self.theta) - p1.y * np.sin(self.theta),
@@ -587,8 +596,12 @@ class Mother:
             self.batteries.append(battery)
             add_pickable = rospy.ServiceProxy('/map/add_pickable', AddPickable)
             print('[mother] adding', battery, 'at z = ', p1.z)
-            add_pickable(battery.min_x, battery.min_y, True)
-            add_pickable(battery.max_x, battery.max_y, True)
+            if (self.map_finer.get_state(battery.x1, battery.y1) == VISITED or
+                self.map_finer.get_state(battery.x2, battery.y2) == VISITED):
+                print('[mother] ignored battery due to visited cell')
+                return
+            add_pickable(battery.x1, battery.y1, True)
+            add_pickable(battery.x2, battery.y2, True)
 
     def acknowledge_new_pickable(self, do):
         if do.type_str == 'object':
@@ -609,6 +622,7 @@ class Mother:
         #RAS Evidence
         image=rospy.client.wait_for_message('/camera/rgb/image_raw',Image)         
         evidence = RAS_Evidence()
+        evidence.stamp = rospy.Time.now()
         evidence.group_number = 6
         evidence. image_evidence = image
         if do.color_str == 'orange' and do.type_str == 'star':
@@ -655,9 +669,9 @@ class Mother:
         pickup_location.header.frame_id = 'wheel_center'
 
         if ignore_type:
-            isPickedUp = self.pickupObject_client(pickup_location, do.color_str, '', do_pickup)
+            return self.pickupObject_client(pickup_location, do.color_str, '', do_pickup)
         else:
-            isPickedUp = self.pickupObject_client(pickup_location, do.color_str, do.type_str, do_pickup)
+            return self.pickupObject_client(pickup_location, do.color_str, do.type_str, do_pickup)
 
     def position_callback(self, data):
         self.x = data.pose.position.x
@@ -672,6 +686,7 @@ class Mother:
         if not self.map.starting_position_set_occupied:
             self.map.visit(self.x, self.y)
         self.map.visit(self.x + np.cos(self.theta) * 0.15, self.y + np.sin(self.theta) * 0.15)
+        self.map_finer.visit(self.x, self.y)
         self.recieved_position = True
 
 
@@ -773,7 +788,7 @@ if __name__ == '__main__':
     explore_parser = subparsers.add_parser('explore', help='first part of competion, exploring and mapping')
     explore_parser.set_defaults(which='explore')
 
-    score_parser = subparsers.add_parser('score', help='second part of competion, score points!')
+    score_parser = subparsers.add_parser('score', help='second part of competetion, score points!')
     score_parser.set_defaults(which='score')
 
     stop_parser = subparsers.add_parser('stop', help='send stop request to planner')
