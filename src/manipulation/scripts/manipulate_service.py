@@ -98,6 +98,8 @@ class Manipulate():
 		else:
 			rospy.sleep(0.5)
 			pickupResponse = self.pickup(request,object_type='booby')
+			if pickupResponse == False:
+				self.toInitPos()
 			return PickupTrapResponse(pickupResponse)
 
 
@@ -473,7 +475,7 @@ class Manipulate():
 				objectPos.point.z = objectPos.point.z + 0.005
 			elif self.pickup_type == 'triangle':
 				print("Hacked triangle")
-				objectPos.point.x = objectPos.point.x + 0.020 + 0.01
+				objectPos.point.x = objectPos.point.x + 0.015 + 0.01
 				objectPos.point.z = objectPos.point.z + 0.01
 			elif self.pickup_type == 'cube' and self.pickup_color == 'green':
 				print("Hacked green cube")
