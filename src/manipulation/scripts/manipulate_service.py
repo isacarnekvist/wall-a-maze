@@ -214,7 +214,6 @@ class Manipulate():
 			self.pickup_type = response.type[number]
 			self.pickup_color = response.color[number]	
 				
-			print("Object position is {}".format(objectPos.point))
 			return objectPos
 		except rospy.ServiceException, e:
 			print("Service call to object position failed")
@@ -413,6 +412,10 @@ class Manipulate():
 	def pickup(self,request,object_type):
 		num_tries = 0
 		max_tries = 3
+
+		if self.pickup_type == 'ball':
+			max_tries = 1
+
 		zTol = 0.02	# [m]
 
 		# ToDo: Add multiple probing, but see first how behaves when multiple times going down!
@@ -430,6 +433,14 @@ class Manipulate():
 			if not response:
 				print("Error correcting pickup pos for purple cross")
 				return False
+
+		if self.pickup_type == 'star' and self.pickup_color == 'orange':
+			response = self.toPickupPos(request, setAim=True, xAim=0.25)
+			print("Moving forward again for orange cross")
+			if not response:
+				print("Error correcting pickup pos for orange cross")
+				return False
+		
 
 		while num_tries < max_tries:
 			if object_type == 'booby':
@@ -459,7 +470,7 @@ class Manipulate():
 			elif self.pickup_type == 'cross':
 				print("Hacked cross")
 				objectPos.point.x = objectPos.point.x + 0.015 + 0.01
-				objectPos.point.z = objectPos.point.z + 0.01
+				objectPos.point.z = objectPos.point.z + 0.005
 			elif self.pickup_type == 'triangle':
 				print("Hacked triangle")
 				objectPos.point.x = objectPos.point.x + 0.020 + 0.01
@@ -484,6 +495,7 @@ class Manipulate():
 			elif self.pickup_type == 'ball':
 				print("Hacked ball")
 				objectPos.point.x = objectPos.point.x + 0.02
+				objectPos.point.z = objectPos.point.z - 0.01
 			elif self.pickup_type == 'hollow cube':
 				print("Hacked hollow cube")
 				objectPos.point.x = objectPos.point.x - 0.01
@@ -578,8 +590,8 @@ class Manipulate():
 						return True
 
 				
-				print("Object is lifted by {} m".format(objectPos_new.point.z-pickupPos_wheelcenter.z))
-				print("PickupPos wheelcenter is".format(pickupPos_wheelcenter.z))
+				#print("Object is lifted by {} m".format(objectPos_new.point.z-pickupPos_wheelcenter.z))
+				#print("PickupPos wheelcenter is".format(pickupPos_wheelcenter.z))
 				if (objectPos_new.point.z-pickupPos_wheelcenter.z) > zTol:
 					print("pickup returns true")
 					return True
